@@ -2,7 +2,7 @@
 
 Name:           ocaml
 Version:        3.11.2
-Release:        2%{?dist}
+Release:        5%{?dist}
 
 Summary:        Objective Caml compiler and programming environment
 
@@ -26,6 +26,12 @@ Patch1:         ocaml-user-cflags.patch
 
 # Support for PPC64 platform by David Woodhouse:
 Patch3:         ocaml-3.11.0-ppc64.patch
+
+# Fix buffer overflow and information leak CVE-2015-8869
+Patch4:         fix-PR-7003-and-a-few-other-bugs-caused-by-misuse-of.patch
+
+# Enable execshield stack protection on ppc/ppc64 (RHBZ#572826).
+Patch5:         fix-execstack-on-power.patch
 
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
@@ -200,12 +206,14 @@ man pages and info files.
 %patch0 -p1 -b .rpath
 %patch1 -p1 -b .cflags
 %patch3 -p1 -b .ppc64
+%patch4 -p1 -b .pr7003
+%patch5 -p1 -b .bz572826
 
 cp %{SOURCE2} refman.pdf
 
 
 %build
-CFLAGS="$RPM_OPT_FLAGS" ./configure \
+CFLAGS="$RPM_OPT_FLAGS -fno-strict-aliasing" ./configure \
     -bindir %{_bindir} \
     -libdir %{_libdir}/ocaml \
     -x11lib %{_libdir} \
@@ -445,6 +453,15 @@ fi
 
 
 %changelog
+* Fri Jun 24 2016 Richard W.M. Jones <rjones@redhat.com> - 3.11.2-5
+- Enable execshield stack protection on ppc/ppc64 (572826)
+  related: rhbz#1343082
+- Fix strict-aliasing warnings in build (990540).
+
+* Thu Jun 09 2016 Richard W.M. Jones <rjones@redhat.com> - 3.11.2-3
+- Fix buffer overflow and information leak CVE-2015-8869
+  resolves: rhbz#1343082
+
 * Fri Jan 29 2010 Richard W.M. Jones <rjones@redhat.com> - 3.11.2-2
 - Update reference manual to latest version from website.
 

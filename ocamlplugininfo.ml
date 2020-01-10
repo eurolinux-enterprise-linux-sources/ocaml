@@ -11,7 +11,7 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* $Id: ocamlplugininfo.ml,v 1.1 2010/01/11 18:45:03 rjones Exp $ *)
+(* $Id: ocamlplugininfo.ml,v 1.1 2009/10/16 14:55:32 rjones Exp $ *)
 
 (* Dumps a .cmxs file *)
 

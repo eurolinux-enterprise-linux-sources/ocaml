@@ -1,19 +1,21 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
-#include <mlvalues.h>
-#include <alloc.h>
-#include <fail.h>
+#include <caml/mlvalues.h>
+#include <caml/alloc.h>
+#include <caml/fail.h>
 #include "unixsupport.h"
 
 #ifdef HAS_TERMIOS
@@ -90,17 +92,22 @@ static long terminal_io_descr[] = {
 #undef cflags
 #undef lflags
 
-struct speedtable_entry ;
-
 static struct {
   speed_t speed;
   int baud;
 } speedtable[] = {
+
+  /* standard speeds */
+  {B0,       0},
   {B50,      50},
   {B75,      75},
   {B110,     110},
   {B134,     134},
   {B150,     150},
+#ifdef B200
+  /* Shouldn't need to be ifdef'd but I'm not sure it's available everywhere. */
+  {B200,     200},
+#endif
   {B300,     300},
   {B600,     600},
   {B1200,    1200},
@@ -110,6 +117,8 @@ static struct {
   {B9600,    9600},
   {B19200,   19200},
   {B38400,   38400},
+
+  /* usual extensions */
 #ifdef B57600
   {B57600,   57600},
 #endif
@@ -119,7 +128,66 @@ static struct {
 #ifdef B230400
   {B230400,  230400},
 #endif
-  {B0,       0}
+
+  /* Linux extensions */
+#ifdef B460800
+  {B460800,  460800},
+#endif
+#ifdef B500000
+  {B500000,  500000},
+#endif
+#ifdef B576000
+  {B576000,  576000},
+#endif
+#ifdef B921600
+  {B921600,  921600},
+#endif
+#ifdef B1000000
+  {B1000000, 1000000},
+#endif
+#ifdef B1152000
+  {B1152000, 1152000},
+#endif
+#ifdef B1500000
+  {B1500000, 1500000},
+#endif
+#ifdef B2000000
+  {B2000000, 2000000},
+#endif
+#ifdef B2500000
+  {B2500000, 2500000},
+#endif
+#ifdef B3000000
+  {B3000000, 3000000},
+#endif
+#ifdef B3500000
+  {B3500000, 3500000},
+#endif
+#ifdef B4000000
+  {B4000000, 4000000},
+#endif
+
+  /* MacOS extensions */
+#ifdef B7200
+  {B7200,    7200},
+#endif
+#ifdef B14400
+  {B14400,   14400},
+#endif
+#ifdef B28800
+  {B28800,   28800},
+#endif
+#ifdef B76800
+  {B76800,   76800},
+#endif
+
+  /* Cygwin extensions (in addition to the Linux ones) */
+#ifdef B128000
+  {B128000,  128000},
+#endif
+#ifdef B256000
+  {B256000,  256000},
+#endif
 };
 
 #define NSPEEDS (sizeof(speedtable) / sizeof(speedtable[0]))
@@ -235,7 +303,7 @@ CAMLprim value unix_tcgetattr(value fd)
 
   if (tcgetattr(Int_val(fd), &terminal_status) == -1)
     uerror("tcgetattr", Nothing);
-  res = alloc_tuple(NFIELDS);
+  res = caml_alloc_tuple(NFIELDS);
   encode_terminal_status(&Field(res, 0));
   return res;
 }
@@ -265,7 +333,7 @@ CAMLprim value unix_tcsendbreak(value fd, value delay)
 
 #if defined(__ANDROID__)
 CAMLprim value unix_tcdrain(value fd)
-{ invalid_argument("tcdrain not implemented"); }
+{ caml_invalid_argument("tcdrain not implemented"); }
 #else
 CAMLprim value unix_tcdrain(value fd)
 {
@@ -299,21 +367,21 @@ CAMLprim value unix_tcflow(value fd, value action)
 #else
 
 CAMLprim value unix_tcgetattr(value fd)
-{ invalid_argument("tcgetattr not implemented"); }
+{ caml_invalid_argument("tcgetattr not implemented"); }
 
 CAMLprim value unix_tcsetattr(value fd, value when, value arg)
-{ invalid_argument("tcsetattr not implemented"); }
+{ caml_invalid_argument("tcsetattr not implemented"); }
 
 CAMLprim value unix_tcsendbreak(value fd, value delay)
-{ invalid_argument("tcsendbreak not implemented"); }
+{ caml_invalid_argument("tcsendbreak not implemented"); }
 
 CAMLprim value unix_tcdrain(value fd)
-{ invalid_argument("tcdrain not implemented"); }
+{ caml_invalid_argument("tcdrain not implemented"); }
 
 CAMLprim value unix_tcflush(value fd, value queue)
-{ invalid_argument("tcflush not implemented"); }
+{ caml_invalid_argument("tcflush not implemented"); }
 
 CAMLprim value unix_tcflow(value fd, value action)
-{ invalid_argument("tcflow not implemented"); }
+{ caml_invalid_argument("tcflow not implemented"); }
 
 #endif

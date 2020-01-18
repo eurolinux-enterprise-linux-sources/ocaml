@@ -1,15 +1,3 @@
-(*************************************************************************)
-(*                                                                       *)
-(*                                OCaml                                  *)
-(*                                                                       *)
-(*         Pierre Weis, projet Pomdapi, INRIA Rocquencourt               *)
-(*                                                                       *)
-(*   Copyright 2011 Institut National de Recherche en Informatique et    *)
-(*   en Automatique.  All rights reserved.  This file is distributed     *)
-(*   under the terms of the Q Public License version 1.0.                *)
-(*                                                                       *)
-(*************************************************************************)
-
 (*
 
 A test file for the Format module.
@@ -31,6 +19,7 @@ try
   test (sprintf "% d/% i" 42 43 = " 42/ 43");
   test (sprintf "%#d/%#i" 42 43 = "42/43");
   test (sprintf "%4d/%5i" 42 43 = "  42/   43");
+  test (sprintf "%*d" (-4) 42 = "42  ");
   test (sprintf "%*d/%*i" 4 42 5 43 = "  42/   43");
   test (sprintf "%-0+#4d/%-0 #5i" 42 43 = "+42 / 43  ");
 
@@ -42,6 +31,7 @@ try
   test (sprintf "% d/% i" (-42) (-43) = "-42/-43");
   test (sprintf "%#d/%#i" (-42) (-43) = "-42/-43");
   test (sprintf "%4d/%5i" (-42) (-43) = " -42/  -43");
+  test (sprintf "%*d" (-4) (-42) = "-42 ");
   test (sprintf "%*d/%*i" 4 (-42) 5 (-43) = " -42/  -43");
   test (sprintf "%-0+ #4d/%-0+ #5i" (-42) (-43) = "-42 /-43  ");
 
@@ -54,7 +44,7 @@ try
   test (sprintf "%#u" 42 = "42");
   test (sprintf "%4u" 42 = "  42");
   test (sprintf "%*u" 4 42 = "  42");
-  test (sprintf "%-0+ #6d" 42 = "+42   ");
+  test (sprintf "%*u" (-4) 42 = "42  ");
 
   say "\nu negative\n%!";
   begin match Sys.word_size with
@@ -74,6 +64,10 @@ try
   test (sprintf "%#x" 42 = "0x2a");
   test (sprintf "%4x" 42 = "  2a");
   test (sprintf "%*x" 5 42 = "   2a");
+  test (sprintf "%*x" (-5) 42 = "2a   ");
+  test (sprintf "%#*x" 5 42 = " 0x2a");
+  test (sprintf "%#*x" (-5) 42 = "0x2a ");
+  test (sprintf "%#-*x" 5 42 = "0x2a ");
   test (sprintf "%-0+ #*x" 5 42 = "0x2a ");
 
   say "\nx negative\n%!";
@@ -135,6 +129,7 @@ try
   test (sprintf "%5s" "foo" = "  foo");
   test (sprintf "%1s" "foo" = "foo");
   test (sprintf "%*s" 6 "foo" = "   foo");
+  test (sprintf "%*s" (-6) "foo" = "foo   ");
   test (sprintf "%*s" 2 "foo" = "foo");
   test (sprintf "%-0+ #5s" "foo" = "foo  ");
   test (sprintf "%s@@" "foo" = "foo@");
@@ -143,16 +138,19 @@ try
 
   say "\nS\n%!";
   test (sprintf "%S" "fo\"o" = "\"fo\\\"o\"");
-(*  test (sprintf "%-5S" "foo" = "\"foo\"  ");   padding not done *)
-(*  test (sprintf "%05S" "foo" = "  \"foo\"");   padding not done *)
+  test (sprintf "%-7S" "foo" = "\"foo\"  ");
+(*  test (sprintf "%07S" "foo" = "  \"foo\""); *)
+  (* %S is incompatible with '0' *)
   test (sprintf "%+S" "foo" = "\"foo\"");
   test (sprintf "% S" "foo" = "\"foo\"");
   test (sprintf "%#S" "foo" = "\"foo\"");
-(*  test (sprintf "%5S" "foo" = "  \"foo\"");    padding not done *)
+  test (sprintf "%7S" "foo" = "  \"foo\"");
   test (sprintf "%1S" "foo" = "\"foo\"");
-(*  test (sprintf "%*S" 6 "foo" = "   \"foo\"");  padding not done *)
+  test (sprintf "%*S" 8 "foo" = "   \"foo\"");
+  test (sprintf "%*S" (-8) "foo" = "\"foo\"   ");
   test (sprintf "%*S" 2 "foo" = "\"foo\"");
 (*  test (sprintf "%-0+ #5S" "foo" = "\"foo\"  ");  padding not done *)
+  (* %S is incompatible with '0','+' and ' ' *)
   test (sprintf "%S@@" "foo" = "\"foo\"@");
   test (sprintf "%S@@inria.fr" "foo" = "\"foo\"@inria.fr");
   test (sprintf "%S@@%S" "foo" "inria.fr" = "\"foo\"@\"inria.fr\"");
@@ -229,12 +227,48 @@ try
   test (sprintf "%F" 42.42e42 =* "4.242e+43");
   test (sprintf "%F" 42.00 = "42.");
   test (sprintf "%F" 0.042 = "0.042");
-(* no padding, no precision
+  test (sprintf "%4F" 3. = "  3.");
+  test (sprintf "%-4F" 3. = "3.  ");
+  test (sprintf "%04F" 3. = "003.");
+(* plus-padding unsupported
+  test (sprintf "%+4F" 3. = " +3.");
+*)
+(* no precision
   test (sprintf "%.3F" 42.42 = "42.420");
   test (sprintf "%12.3F" 42.42e42 = "   4.242e+43");
   test (sprintf "%.3F" 42.00 = "42.000");
   test (sprintf "%.3F" 0.0042 = "0.004");
 *)
+
+  say "\nh\n%!";
+  test (sprintf "%+h" (+0.) = "+0x0p+0");
+  test (sprintf "%+h" (-0.) = "-0x0p+0");
+  test (sprintf "%+h" (+1.) = "+0x1p+0");
+  test (sprintf "%+h" (-1.) = "-0x1p+0");
+  test (sprintf "%+h" (+1024.) = "+0x1p+10");
+  test (sprintf "%+h" (-1024.) = "-0x1p+10");
+  test (sprintf "%h" 0x123.456 = "0x1.23456p+8");
+  test (sprintf "%h" 0x123456789ABCDE. = "0x1.23456789abcdep+52");
+  test (sprintf "%h" epsilon_float = "0x1p-52");
+  test (sprintf "%h" nan = "nan");
+  test (sprintf "%h" infinity = "infinity");
+  test (sprintf "%h" neg_infinity = "-infinity");
+  test (sprintf "%h" (4. *. atan 1.) = "0x1.921fb54442d18p+1");
+
+  say "\nH\n%!";
+  test (sprintf "%+H" (+0.) = "+0X0P+0");
+  test (sprintf "%+H" (-0.) = "-0X0P+0");
+  test (sprintf "%+H" (+1.) = "+0X1P+0");
+  test (sprintf "%+H" (-1.) = "-0X1P+0");
+  test (sprintf "%+H" (+1024.) = "+0X1P+10");
+  test (sprintf "%+H" (-1024.) = "-0X1P+10");
+  test (sprintf "%H" 0X123.456 = "0X1.23456P+8");
+  test (sprintf "%H" 0X123456789ABCDE. = "0X1.23456789ABCDEP+52");
+  test (sprintf "%H" epsilon_float = "0X1P-52");
+  test (sprintf "%H" nan = "NAN");
+  test (sprintf "%H" infinity = "INFINITY");
+  test (sprintf "%H" neg_infinity = "-INFINITY");
+  test (sprintf "%H" (4. *. atan 1.) = "0X1.921FB54442D18P+1");
 
   say "\ne\n%!";
   test (sprintf "%e" (-42.42) =* "-4.242000e+01");
@@ -297,6 +331,8 @@ try
   say "\nB\n%!";
   test (sprintf "%B" true = "true");
   test (sprintf "%B" false = "false");
+ (* test (sprintf "%8B" false = "   false"); *)
+  (* padding not done *)
 
   say "\nld/li positive\n%!";
   test (sprintf "%ld/%li" 42l 43l = "42/43");
@@ -485,8 +521,8 @@ try
   test (sprintf "@@" = "@");
   test (sprintf "@@@@" = "@@");
   test (sprintf "@@%%" = "@%");
-
   say "\nend of tests\n%!";
+
 with e ->
   say "unexpected exception: %s\n%!" (Printexc.to_string e);
   test false;

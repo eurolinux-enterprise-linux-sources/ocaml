@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../../LICENSE.  *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Interface to the Unix system.
    To use as replacement to default {!Unix} module,
@@ -124,6 +126,21 @@ val getenv : string -> string
    environment. Raise [Not_found] if the variable is unbound.
    (This function is identical to [Sys.getenv].) *)
 
+(*
+val unsafe_getenv : string -> string
+(** Return the value associated to a variable in the process
+   environment.
+
+   Unlike {!getenv}, this function returns the value even if the
+   process has special privileges. It is considered unsafe because the
+   programmer of a setuid or setgid program must be careful to avoid
+   using maliciously crafted environment variables in the search path
+   for executables, the locations for temporary files or logs, and the
+   like.
+
+   @raise Not_found if the variable is unbound.  *)
+*)
+
 val putenv : string -> string -> unit
 (** [Unix.putenv name value] sets the value associated to a
    variable in the process environment.
@@ -236,12 +253,18 @@ type open_flag = Unix.open_flag =
   | O_TRUNC                     (** Truncate to 0 length if existing *)
   | O_EXCL                      (** Fail if existing *)
   | O_NOCTTY                    (** Don't make this dev a controlling tty *)
-  | O_DSYNC                     (** Writes complete as `Synchronised I/O data integrity completion' *)
-  | O_SYNC                      (** Writes complete as `Synchronised I/O file integrity completion' *)
-  | O_RSYNC                     (** Reads complete as writes (depending on O_SYNC/O_DSYNC) *)
-  | O_SHARE_DELETE              (** Windows only: allow the file to be deleted while still open *)
+  | O_DSYNC                     (** Writes complete as `Synchronised I/O data
+                                    integrity completion' *)
+  | O_SYNC                      (** Writes complete as `Synchronised I/O file
+                                    integrity completion' *)
+  | O_RSYNC                     (** Reads complete as writes (depending
+                                    on O_SYNC/O_DSYNC) *)
+  | O_SHARE_DELETE              (** Windows only: allow the file to be deleted
+                                    while still open *)
   | O_CLOEXEC                   (** Set the close-on-exec flag on the
                                    descriptor returned by {!openfile} *)
+  | O_KEEPEXEC                  (** Clear the close-on-exec flag.
+                                    This is currently the default. *)
 (** The flags to {!UnixLabels.openfile}. *)
 
 
@@ -257,22 +280,33 @@ val openfile : string -> mode:open_flag list -> perm:file_perm -> file_descr
 val close : file_descr -> unit
 (** Close a file descriptor. *)
 
-val read : file_descr -> buf:string -> pos:int -> len:int -> int
-(** [read fd buff ofs len] reads [len] characters from descriptor
-   [fd], storing them in string [buff], starting at position [ofs]
-   in string [buff]. Return the number of characters actually read. *)
+val read : file_descr -> buf:bytes -> pos:int -> len:int -> int
+(** [read fd buff ofs len] reads [len] bytes from descriptor [fd],
+    storing them in byte sequence [buff], starting at position [ofs] in
+    [buff]. Return the number of bytes actually read. *)
 
-val write : file_descr -> buf:string -> pos:int -> len:int -> int
-(** [write fd buff ofs len] writes [len] characters to descriptor
-   [fd], taking them from string [buff], starting at position [ofs]
-   in string [buff]. Return the number of characters actually
-   written.  [write] repeats the writing operation until all characters
-   have been written or an error occurs.  *)
+val write : file_descr -> buf:bytes -> pos:int -> len:int -> int
+(** [write fd buff ofs len] writes [len] bytes to descriptor [fd],
+    taking them from byte sequence [buff], starting at position [ofs]
+    in [buff]. Return the number of bytes actually written.  [write]
+    repeats the writing operation until all bytes have been written or
+    an error occurs.  *)
 
-val single_write : file_descr -> buf:string -> pos:int -> len:int -> int
+val single_write : file_descr -> buf:bytes -> pos:int -> len:int -> int
 (** Same as [write], but attempts to write only once.
    Thus, if an error occurs, [single_write] guarantees that no data
    has been written. *)
+
+val write_substring : file_descr -> buf:string -> pos:int -> len:int -> int
+(** Same as [write], but take the data from a string instead of a byte
+    sequence.
+    @since 4.02.0 *)
+
+val single_write_substring :
+  file_descr -> buf:string -> pos:int -> len:int -> int
+(** Same as [single_write], but take the data from a string instead of
+    a byte sequence.
+    @since 4.02.0 *)
 
 (** {6 Interfacing with the standard input/output library} *)
 
@@ -446,11 +480,11 @@ val access : string -> perm:access_permission list -> unit
 (** {6 Operations on file descriptors} *)
 
 
-val dup : file_descr -> file_descr
+val dup : ?cloexec:bool -> file_descr -> file_descr
 (** Return a new file descriptor referencing the same file as
    the given descriptor. *)
 
-val dup2 : src:file_descr -> dst:file_descr -> unit
+val dup2 : ?cloexec:bool -> src:file_descr -> dst:file_descr -> unit
 (** [dup2 fd1 fd2] duplicates [fd1] to [fd2], closing [fd2] if already
    opened. *)
 
@@ -516,7 +550,7 @@ val closedir : dir_handle -> unit
 (** {6 Pipes and redirections} *)
 
 
-val pipe : unit -> file_descr * file_descr
+val pipe : ?cloexec:bool -> unit -> file_descr * file_descr
 (** Create a pipe. The first component of the result is opened
    for reading, that's the exit to the pipe. The second component is
    opened for writing, that's the entrance to the pipe. *)
@@ -605,9 +639,16 @@ val close_process_full :
 (** {6 Symbolic links} *)
 
 
-val symlink : src:string -> dst:string -> unit
+val symlink : ?to_dir:bool -> src:string -> dst:string -> unit
 (** [symlink source dest] creates the file [dest] as a symbolic link
-   to the file [source]. *)
+   to the file [source]. See {!Unix.symlink} for details of [~to_dir] *)
+
+val has_symlink : unit -> bool
+(** Returns [true] if the user is able to create symbolic links. On Windows,
+   this indicates that the user not only has the SeCreateSymbolicLinkPrivilege
+   but is also running elevated, if necessary. On other platforms, this is
+   simply indicates that the symlink system call is available.
+   @since 4.03.0 *)
 
 val readlink : string -> string
 (** Read the contents of a link. *)
@@ -772,9 +813,11 @@ val utimes : string -> access:float -> modif:float -> unit
 
 type interval_timer = Unix.interval_timer =
     ITIMER_REAL
-      (** decrements in real time, and sends the signal [SIGALRM] when expired.*)
+      (** decrements in real time, and sends the signal [SIGALRM] when
+          expired.*)
   | ITIMER_VIRTUAL
-      (**  decrements in process virtual time, and sends [SIGVTALRM] when expired. *)
+      (** decrements in process virtual time, and sends [SIGVTALRM] when
+          expired. *)
   | ITIMER_PROF
       (** (for profiling) decrements both when the process
          is running and when the system is running on behalf of the
@@ -938,7 +981,8 @@ type sockaddr = Unix.sockaddr =
    [port] is the port number. *)
 
 val socket :
-  domain:socket_domain -> kind:socket_type -> protocol:int -> file_descr
+  ?cloexec:bool -> domain:socket_domain -> kind:socket_type -> protocol:int ->
+     file_descr
 (** Create a new socket in the given domain, and with the
    given kind. The third argument is the protocol type; 0 selects
    the default protocol for that kind of sockets. *)
@@ -947,11 +991,11 @@ val domain_of_sockaddr: sockaddr -> socket_domain
 (** Return the socket domain adequate for the given socket address. *)
 
 val socketpair :
-  domain:socket_domain -> kind:socket_type -> protocol:int ->
+  ?cloexec:bool -> domain:socket_domain -> kind:socket_type -> protocol:int ->
     file_descr * file_descr
 (** Create a pair of unnamed sockets, connected together. *)
 
-val accept : file_descr -> file_descr * sockaddr
+val accept : ?cloexec:bool -> file_descr -> file_descr * sockaddr
 (** Accept connections on the given socket. The returned descriptor
    is a socket connected to the client; the returned address is
    the address of the connecting client. *)
@@ -994,22 +1038,35 @@ type msg_flag = Unix.msg_flag =
    {!UnixLabels.send} and {!UnixLabels.sendto}. *)
 
 val recv :
-  file_descr -> buf:string -> pos:int -> len:int -> mode:msg_flag list -> int
+  file_descr -> buf:bytes -> pos:int -> len:int -> mode:msg_flag list -> int
 (** Receive data from a connected socket. *)
 
 val recvfrom :
-  file_descr -> buf:string -> pos:int -> len:int -> mode:msg_flag list ->
+  file_descr -> buf:bytes -> pos:int -> len:int -> mode:msg_flag list ->
     int * sockaddr
 (** Receive data from an unconnected socket. *)
 
 val send :
-  file_descr -> buf:string -> pos:int -> len:int -> mode:msg_flag list -> int
+  file_descr -> buf:bytes -> pos:int -> len:int -> mode:msg_flag list -> int
 (** Send data over a connected socket. *)
 
+val send_substring :
+  file_descr -> buf:string -> pos:int -> len:int -> mode:msg_flag list -> int
+(** Same as [send], but take the data from a string instead of a byte
+    sequence.
+    @since 4.02.0 *)
+
 val sendto :
-  file_descr -> buf:string -> pos:int -> len:int -> mode:msg_flag list ->
+  file_descr -> buf:bytes -> pos:int -> len:int -> mode:msg_flag list ->
     addr:sockaddr -> int
 (** Send data over an unconnected socket. *)
+
+val sendto_substring :
+  file_descr -> buf:string -> pos:int -> len:int -> mode:msg_flag list
+  -> sockaddr -> int
+(** Same as [sendto], but take the data from a string instead of a
+    byte sequence.
+    @since 4.02.0 *)
 
 
 
@@ -1031,12 +1088,12 @@ type socket_bool_option =
    ([true]/[false]) value. *)
 
 type socket_int_option =
-    SO_SNDBUF      (** Size of send buffer *)
-  | SO_RCVBUF      (** Size of received buffer *)
-  | SO_ERROR       (** Deprecated.  Use {!Unix.getsockopt_error} instead. *)
-  | SO_TYPE        (** Report the socket type *)
-  | SO_RCVLOWAT    (** Minimum number of bytes to process for input operations *)
-  | SO_SNDLOWAT    (** Minimum number of bytes to process for output operations *)
+    SO_SNDBUF    (** Size of send buffer *)
+  | SO_RCVBUF    (** Size of received buffer *)
+  | SO_ERROR     (** Deprecated.  Use {!Unix.getsockopt_error} instead. *)
+  | SO_TYPE      (** Report the socket type *)
+  | SO_RCVLOWAT  (** Minimum number of bytes to process for input operations *)
+  | SO_SNDLOWAT  (** Minimum number of bytes to process for output operations *)
 (** The socket options that can be consulted with {!UnixLabels.getsockopt_int}
    and modified with {!UnixLabels.setsockopt_int}.  These options have an
    integer value. *)
@@ -1071,17 +1128,21 @@ val setsockopt_int : file_descr -> socket_int_option -> int -> unit
 (** Same as {!Unix.setsockopt} for an integer-valued socket option. *)
 
 val getsockopt_optint : file_descr -> socket_optint_option -> int option
-(** Same as {!Unix.getsockopt} for a socket option whose value is an [int option]. *)
+(** Same as {!Unix.getsockopt} for a socket option whose value is
+    an [int option]. *)
 
 val setsockopt_optint :
       file_descr -> socket_optint_option -> int option -> unit
-(** Same as {!Unix.setsockopt} for a socket option whose value is an [int option]. *)
+(** Same as {!Unix.setsockopt} for a socket option whose value is
+    an [int option]. *)
 
 val getsockopt_float : file_descr -> socket_float_option -> float
-(** Same as {!Unix.getsockopt} for a socket option whose value is a floating-point number. *)
+(** Same as {!Unix.getsockopt} for a socket option whose value is a
+    floating-point number. *)
 
 val setsockopt_float : file_descr -> socket_float_option -> float -> unit
-(** Same as {!Unix.setsockopt} for a socket option whose value is a floating-point number. *)
+(** Same as {!Unix.setsockopt} for a socket option whose value is a
+    floating-point number. *)
 
 val getsockopt_error : file_descr -> error option
 (** Return the error condition associated with the given socket,
@@ -1205,7 +1266,8 @@ val getaddrinfo:
 
 type name_info =
   { ni_hostname : string;               (** Name or IP address of host *)
-    ni_service : string }               (** Name of service or port number *)
+    ni_service : string;                (** Name of service or port number *)
+  }
 (** Host and service information returned by {!Unix.getnameinfo}. *)
 
 type getnameinfo_option =

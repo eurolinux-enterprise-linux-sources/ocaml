@@ -1,15 +1,3 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2004 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
-
 (** Custom generator to perform test on ocamldoc. *)
 
 open Odoc_info
@@ -53,7 +41,19 @@ class string_gen =
              p fmt "# manifest (Odoc_info.string_of_type_expr):\n<[%s]>\n"
                (match t.ty_manifest with
                  None -> "None"
-               | Some e -> Odoc_info.string_of_type_expr e
+               | Some (Other e) -> Odoc_info.string_of_type_expr e
+               | Some (Object_type fields) ->
+                 let b = Buffer.create 256 in
+                 Buffer.add_string b "<";
+                 List.iter
+                   (fun fd ->
+                     Printf.bprintf b " %s: %s ;"
+                       fd.of_name
+                       (Odoc_info.string_of_type_expr fd.of_type)
+                   )
+                   fields;
+                 Buffer.add_string b " >";
+                 Buffer.contents b
                );
             );
 

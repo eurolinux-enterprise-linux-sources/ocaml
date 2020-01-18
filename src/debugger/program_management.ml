@@ -1,15 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*          Jerome Vouillon, projet Cristal, INRIA Rocquencourt        *)
-(*          OCaml port by John Malecki and Xavier Leroy                *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*           Jerome Vouillon, projet Cristal, INRIA Rocquencourt          *)
+(*           OCaml port by John Malecki and Xavier Leroy                  *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Manage the loading of the program *)
 
@@ -30,7 +33,7 @@ open Time_travel
 let file_name = ref (None : string option)
 
 (* Default connection handler. *)
-let buffer = String.create 1024
+let buffer = Bytes.create 1024
 let control_connection pid fd =
   if (read fd.io_fd buffer 0 1024) = 0 then
     forget_process fd pid
@@ -124,6 +127,8 @@ let initialize_loading () =
     raise Toplevel;
   end;
   Symbols.read_symbols !program_name;
+  Config.load_path := !Config.load_path @ !Symbols.program_source_dirs;
+  Envaux.reset_cache ();
   if !debug_loading then
     prerr_endline "Opening a socket...";
   open_connection !socket_name

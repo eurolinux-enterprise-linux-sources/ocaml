@@ -1,22 +1,24 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*  Developed by Jacob Navia, based on code by J-M Geffroy and X Leroy */
-/*                                                                     */
-/*  Copyright 2001 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*   Developed by Jacob Navia, based on code by J-M Geffroy and X Leroy   */
+/*                                                                        */
+/*   Copyright 2001 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 #include <fcntl.h>
 #include <signal.h>
-#include "mlvalues.h"
-#include "fail.h"
+#include "caml/mlvalues.h"
+#include "caml/fail.h"
 #include "libgraph.h"
-#include "callback.h"
+#include "caml/callback.h"
 #include <windows.h>
 
 static value gr_reset(void);
@@ -37,7 +39,7 @@ MSG msg;
 
 static char *szOcamlWindowClass = "OcamlWindowClass";
 static BOOL gr_initialized = 0;
-CAMLprim value caml_gr_clear_graph(void);
+CAMLprim value caml_gr_clear_graph(value unit);
 HANDLE hInst;
 
 HFONT CreationFont(char *name)
@@ -48,7 +50,8 @@ HFONT CreationFont(char *name)
    CurrentFont.lfWeight = FW_NORMAL;
    CurrentFont.lfHeight = grwindow.CurrentFontSize;
    CurrentFont.lfPitchAndFamily = (BYTE) (FIXED_PITCH | FF_MODERN);
-   strcpy(CurrentFont.lfFaceName, name);  /* Courier */
+   strncpy(CurrentFont.lfFaceName, name, sizeof(CurrentFont.lfFaceName));
+   CurrentFont.lfFaceName[sizeof(CurrentFont.lfFaceName) - 1] = 0;
    return (CreateFontIndirect(&CurrentFont));
 }
 
@@ -73,7 +76,8 @@ void ResetForClose(HWND hwnd)
 
 
 
-static LRESULT CALLBACK GraphicsWndProc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)
+static LRESULT CALLBACK GraphicsWndProc(HWND hwnd,UINT msg,WPARAM wParam,
+                                        LPARAM lParam)
 {
         PAINTSTRUCT ps;
         HDC hdc;
@@ -90,7 +94,8 @@ static LRESULT CALLBACK GraphicsWndProc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM 
                 break;
                 // Move the child windows
         case WM_SIZE:
-                // Position the MDI client window between the tool and status bars
+                // Position the MDI client window between the tool and
+                // status bars
                 if (wParam != SIZE_MINIMIZED) {
                         SetCoordinates(hwnd);
                 }
@@ -99,7 +104,6 @@ static LRESULT CALLBACK GraphicsWndProc(HWND hwnd,UINT msg,WPARAM wParam,LPARAM 
                 // End application
         case WM_DESTROY:
                 ResetForClose(hwnd);
-		gr_check_open();
                 break;
         }
         caml_gr_handle_event(msg, wParam, lParam);
@@ -111,7 +115,7 @@ int DoRegisterClass(void)
         WNDCLASS wc;
 
         memset(&wc,0,sizeof(WNDCLASS));
-        wc.style = CS_HREDRAW|CS_VREDRAW |CS_DBLCLKS|CS_OWNDC ;
+        wc.style = CS_HREDRAW|CS_VREDRAW|CS_OWNDC ;
         wc.lpfnWndProc = (WNDPROC)GraphicsWndProc;
         wc.hInstance = hInst;
         wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
@@ -134,7 +138,8 @@ static value gr_reset(void)
         grwindow.width = rc.right;
         grwindow.height = rc.bottom;
         if (grwindow.gcBitmap == (HDC)0) {
-                grwindow.hBitmap = CreateCompatibleBitmap(grwindow.gc,screenx,screeny);
+                grwindow.hBitmap = CreateCompatibleBitmap(grwindow.gc,screenx,
+                                                          screeny);
                 grwindow.gcBitmap = CreateCompatibleDC(grwindow.gc);
                 grwindow.tempDC = CreateCompatibleDC(grwindow.gc);
                 SelectObject(grwindow.gcBitmap,grwindow.hBitmap);
@@ -148,10 +153,12 @@ static value gr_reset(void)
         grwindow.CurrentColor = GetSysColor(COLOR_WINDOWTEXT);
         grwindow.grx = 0;
         grwindow.gry = 0;
-        grwindow.CurrentPen = SelectObject(grwindow.gc,GetStockObject(WHITE_PEN));
+        grwindow.CurrentPen = SelectObject(grwindow.gc,
+                                           GetStockObject(WHITE_PEN));
         SelectObject(grwindow.gc,grwindow.CurrentPen);
         SelectObject(grwindow.gcBitmap,grwindow.CurrentPen);
-        grwindow.CurrentBrush = SelectObject(grwindow.gc,GetStockObject(WHITE_BRUSH));
+        grwindow.CurrentBrush = SelectObject(grwindow.gc,
+                                             GetStockObject(WHITE_BRUSH));
         SelectObject(grwindow.gc,grwindow.CurrentBrush);
         SelectObject(grwindow.gcBitmap,grwindow.CurrentBrush);
         caml_gr_set_color(Val_long(0));
@@ -253,7 +260,7 @@ static DWORD WINAPI gr_open_graph_internal(value arg)
 
 CAMLprim value caml_gr_open_graph(value arg)
 {
-  long tid;
+  DWORD tid;
   if (gr_initialized) return Val_unit;
   open_graph_event = CreateEvent(NULL, FALSE, FALSE, NULL);
   threadHandle =
@@ -267,7 +274,7 @@ CAMLprim value caml_gr_open_graph(value arg)
   return Val_unit;
 }
 
-CAMLprim value caml_gr_close_graph(void)
+CAMLprim value caml_gr_close_graph(value unit)
 {
         if (gr_initialized) {
                 PostMessage(grwindow.hwnd, WM_CLOSE, 0, 0);
@@ -276,7 +283,7 @@ CAMLprim value caml_gr_close_graph(void)
         return Val_unit;
 }
 
-CAMLprim value caml_gr_clear_graph(void)
+CAMLprim value caml_gr_clear_graph(value unit)
 {
         gr_check_open();
         if(grremember_mode) {
@@ -290,13 +297,13 @@ CAMLprim value caml_gr_clear_graph(void)
         return Val_unit;
 }
 
-CAMLprim value caml_gr_size_x(void)
+CAMLprim value caml_gr_size_x(value unit)
 {
         gr_check_open();
         return Val_int(grwindow.width);
 }
 
-CAMLprim value caml_gr_size_y(void)
+CAMLprim value caml_gr_size_y(value unit)
 {
         gr_check_open();
         return Val_int(grwindow.height);
@@ -311,7 +318,7 @@ CAMLprim value caml_gr_resize_window (value vx, value vy)
   return Val_unit;
 }
 
-CAMLprim value caml_gr_synchronize(void)
+CAMLprim value caml_gr_synchronize(value unit)
 {
         gr_check_open();
         BitBlt(grwindow.gc,0,0,grwindow.width,grwindow.height,
@@ -336,7 +343,7 @@ CAMLprim value caml_gr_sigio_signal(value unit)
         return Val_unit;
 }
 
-CAMLprim value caml_gr_sigio_handler(void)
+CAMLprim value caml_gr_sigio_handler(value unit)
 {
         return Val_unit;
 }
@@ -352,10 +359,11 @@ void gr_fail(char *fmt, char *arg)
   if (graphic_failure_exn == NULL) {
     graphic_failure_exn = caml_named_value("Graphics.Graphic_failure");
     if (graphic_failure_exn == NULL)
-      invalid_argument("Exception Graphics.Graphic_failure not initialized, must link graphics.cma");
+      caml_invalid_argument("Exception Graphics.Graphic_failure not initialized, "
+                       "must link graphics.cma");
   }
   sprintf(buffer, fmt, arg);
-  raise_with_string(*graphic_failure_exn, buffer);
+  caml_raise_with_string(*graphic_failure_exn, buffer);
 }
 
 void gr_check_open(void)

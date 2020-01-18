@@ -1,23 +1,31 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*        Mehdi Dogguy, PPS laboratory, University Paris Diderot       */
-/*                                                                     */
-/*  Copyright 2010 Mehdi Dogguy.  Used and distributed as part of      */
-/*  OCaml by permission from the author.   This file is                */
-/*  distributed under the terms of the Q Public License version 1.0.   */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*         Mehdi Dogguy, PPS laboratory, University Paris Diderot         */
+/*                                                                        */
+/*   Copyright 2010 Mehdi Dogguy                                          */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 #include "../config/s.h"
-#include "../byterun/mlvalues.h"
-#include "../byterun/alloc.h"
 #include <stdio.h>
 
 #ifdef HAS_LIBBFD
 #include <stdlib.h>
 #include <string.h>
+
+// PACKAGE: protect against binutils change
+//   https://sourceware.org/bugzilla/show_bug.cgi?id=14243
+#define PACKAGE "ocamlobjinfo"
 #include <bfd.h>
+#undef PACKAGE
+
+#define plugin_header_sym (symbol_prefix "caml_plugin_header")
 
 int main(int argc, char ** argv)
 {
@@ -69,14 +77,14 @@ int main(int argc, char ** argv)
   sym_count = bfd_canonicalize_dynamic_symtab (fd, symbol_table);
 
   for (i = 0; i < sym_count; i++) {
-    if (strcmp(symbol_table[i]->name, "caml_plugin_header") == 0) {
+    if (strcmp(symbol_table[i]->name, plugin_header_sym) == 0) {
       printf("%ld\n", (long) (offset + symbol_table[i]->value));
       bfd_close(fd);
       return 0;
     }
   }
 
-  fprintf(stderr, "Error: missing symbol caml_plugin_header\n");
+  fprintf(stderr, "Error: missing symbol %s\n", plugin_header_sym);
   bfd_close(fd);
   return 2;
 }

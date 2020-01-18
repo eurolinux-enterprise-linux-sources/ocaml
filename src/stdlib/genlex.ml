@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*              Xavier Leroy, projet Cristal, INRIA Rocquencourt       *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../LICENSE.     *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*               Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 type token =
     Kwd of string
@@ -21,7 +23,7 @@ type token =
 
 (* The string buffering machinery *)
 
-let initial_buffer = String.create 32
+let initial_buffer = Bytes.create 32
 
 let buffer = ref initial_buffer
 let bufpos = ref 0
@@ -29,16 +31,16 @@ let bufpos = ref 0
 let reset_buffer () = buffer := initial_buffer; bufpos := 0
 
 let store c =
-  if !bufpos >= String.length !buffer then
-    begin
-      let newbuffer = String.create (2 * !bufpos) in
-      String.blit !buffer 0 newbuffer 0 !bufpos; buffer := newbuffer
-    end;
-  String.set !buffer !bufpos c;
+  if !bufpos >= Bytes.length !buffer then begin
+    let newbuffer = Bytes.create (2 * !bufpos) in
+    Bytes.blit !buffer 0 newbuffer 0 !bufpos;
+    buffer := newbuffer
+  end;
+  Bytes.set !buffer !bufpos c;
   incr bufpos
 
 let get_string () =
-  let s = String.sub !buffer 0 !bufpos in buffer := initial_buffer; s
+  let s = Bytes.sub_string !buffer 0 !bufpos in buffer := initial_buffer; s
 
 (* The lexer *)
 
@@ -182,18 +184,18 @@ let make_lexer keywords =
     match Stream.peek strm__ with
       Some '(' -> Stream.junk strm__; maybe_nested_comment strm__
     | Some '*' -> Stream.junk strm__; maybe_end_comment strm__
-    | Some c -> Stream.junk strm__; comment strm__
+    | Some _ -> Stream.junk strm__; comment strm__
     | _ -> raise Stream.Failure
   and maybe_nested_comment (strm__ : _ Stream.t) =
     match Stream.peek strm__ with
       Some '*' -> Stream.junk strm__; let s = strm__ in comment s; comment s
-    | Some c -> Stream.junk strm__; comment strm__
+    | Some _ -> Stream.junk strm__; comment strm__
     | _ -> raise Stream.Failure
   and maybe_end_comment (strm__ : _ Stream.t) =
     match Stream.peek strm__ with
       Some ')' -> Stream.junk strm__; ()
     | Some '*' -> Stream.junk strm__; maybe_end_comment strm__
-    | Some c -> Stream.junk strm__; comment strm__
+    | Some _ -> Stream.junk strm__; comment strm__
     | _ -> raise Stream.Failure
   in
-  fun input -> Stream.from (fun count -> next_token input)
+  fun input -> Stream.from (fun _count -> next_token input)

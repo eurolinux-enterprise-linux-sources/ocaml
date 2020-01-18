@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Instruction scheduling *)
 
@@ -132,20 +135,22 @@ let rec remove_instr node = function
 
 (* We treat Lreloadretaddr as a word-sized load *)
 
-let some_load = (Iload(Cmm.Word, Arch.identity_addressing))
+let some_load = (Iload(Cmm.Word_int, Arch.identity_addressing))
 
 (* The generic scheduler *)
 
 class virtual scheduler_generic = object (self)
+
+val mutable trywith_nesting = 0
 
 (* Determine whether an operation ends a basic block or not.
    Can be overridden for some processors to signal specific instructions
    that terminate a basic block. *)
 
 method oper_in_basic_block = function
-    Icall_ind -> false
+    Icall_ind _ -> false
   | Icall_imm _ -> false
-  | Itailcall_ind -> false
+  | Itailcall_ind _ -> false
   | Itailcall_imm _ -> false
   | Iextcall _ -> false
   | Istackoffset _ -> false
@@ -154,9 +159,16 @@ method oper_in_basic_block = function
 
 (* Determine whether an instruction ends a basic block or not *)
 
-method private instr_in_basic_block instr =
+(* PR#2719: it is generally incorrect to schedule checkbound instructions
+   within a try ... with Invalid_argument _ -> ...
+   Hence, a checkbound instruction within a try...with block ends the
+   current basic block. *)
+
+method private instr_in_basic_block instr try_nesting =
   match instr.desc with
-    Lop op -> self#oper_in_basic_block op
+    Lop op ->
+      self#oper_in_basic_block op &&
+      not (try_nesting > 0 && self#is_checkbound op)
   | Lreloadretaddr -> true
   | _ -> false
 
@@ -165,7 +177,7 @@ method private instr_in_basic_block instr =
    load or store instructions (e.g. on the I386). *)
 
 method is_store = function
-    Istore(_, _) -> true
+    Istore(_, _, _) -> true
   | _ -> false
 
 method is_load = function
@@ -173,8 +185,8 @@ method is_load = function
   | _ -> false
 
 method is_checkbound = function
-    Iintop Icheckbound -> true
-  | Iintop_imm(Icheckbound, _) -> true
+    Iintop (Icheckbound _) -> true
+  | Iintop_imm(Icheckbound _, _) -> true
   | _ -> false
 
 method private instr_is_store instr =
@@ -345,38 +357,44 @@ method private reschedule ready_queue date cont =
 
 method schedule_fundecl f =
 
-  let rec schedule i =
+  let rec schedule i try_nesting =
     match i.desc with
-      Lend -> i
+    | Lend -> i
+    | Lpushtrap -> { i with next = schedule i.next (try_nesting + 1) }
+    | Lpoptrap -> { i with next = schedule i.next (try_nesting - 1) }
     | _ ->
-        if self#instr_in_basic_block i then begin
+        if self#instr_in_basic_block i try_nesting then begin
           clear_code_dag();
-          schedule_block [] i
+          schedule_block [] i try_nesting
         end else
-          { i with next = schedule i.next }
+          { i with next = schedule i.next try_nesting }
 
-  and schedule_block ready_queue i =
-    if self#instr_in_basic_block i then
-      schedule_block (self#add_instruction ready_queue i) i.next
+  and schedule_block ready_queue i try_nesting =
+    if self#instr_in_basic_block i try_nesting then
+      schedule_block (self#add_instruction ready_queue i) i.next try_nesting
     else begin
       let critical_outputs =
         match i.desc with
-          Lop(Icall_ind | Itailcall_ind) -> [| i.arg.(0) |]
+          Lop(Icall_ind _ | Itailcall_ind _) -> [| i.arg.(0) |]
         | Lop(Icall_imm _ | Itailcall_imm _ | Iextcall _) -> [||]
         | Lreturn -> [||]
         | _ -> i.arg in
       List.iter (fun x -> ignore (longest_path critical_outputs x)) ready_queue;
-      self#reschedule ready_queue 0 (schedule i)
+      self#reschedule ready_queue 0 (schedule i try_nesting)
     end in
 
   if f.fun_fast then begin
-    let new_body = schedule f.fun_body in
+    let new_body = schedule f.fun_body 0 in
     clear_code_dag();
     { fun_name = f.fun_name;
       fun_body = new_body;
       fun_fast = f.fun_fast;
-      fun_dbg  = f.fun_dbg }
+      fun_dbg  = f.fun_dbg;
+      fun_spacetime_shape = f.fun_spacetime_shape;
+    }
   end else
     f
 
 end
+
+let reset () = clear_code_dag ()

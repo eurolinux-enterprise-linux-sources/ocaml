@@ -1,22 +1,25 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*                  Benedikt Meurer, University of Siegen              *)
-(*                                                                     *)
-(*    Copyright 1998 Institut National de Recherche en Informatique    *)
-(*    et en Automatique. Copyright 2012 Benedikt Meurer. All rights    *)
-(*    reserved.  This file is distributed  under the terms of the Q    *)
-(*    Public License version 1.0.                                      *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*                 Benedikt Meurer, University of Siegen                  *)
+(*                                                                        *)
+(*   Copyright 1998 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*   Copyright 2012 Benedikt Meurer.                                      *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Arch
 open Mach
 
 (* Instruction scheduling for the ARM *)
 
-class scheduler = object(self)
+class scheduler = object
 
 inherit Schedgen.scheduler_generic as super
 
@@ -31,8 +34,8 @@ method oper_latency = function
   | Ifloatofint       (* mcr/mrc count as memory access *)
   | Iintoffloat -> 2
   (* Multiplys have a latency of two cycles *)
-  | Iintop Imul
-  | Ispecific(Imuladd | Imulsub) -> 2
+  | Iintop (Imul | Imulh)
+  | Ispecific(Imuladd | Imulsub | Imulhadd) -> 2
   (* VFP instructions *)
   | Iaddf
   | Isubf
@@ -55,13 +58,11 @@ method oper_issue_cycles = function
   | Iintop(Ilsl | Ilsr | Iasr) -> 2
   | Iintop(Icomp _)
   | Iintop_imm(Icomp _, _) -> 3
-  | Iintop(Icheckbound)
-  | Iintop_imm(Icheckbound, _) -> 2
+  | Iintop(Icheckbound _)
+  | Iintop_imm(Icheckbound _, _) -> 2
   | Ispecific(Ishiftcheckbound _) -> 3
-  | Iintop_imm(Idiv, _) -> 4
-  | Iintop_imm(Imod, _) -> 6
-  | Iintop Imul
-  | Ispecific(Imuladd | Imulsub) -> 2
+  | Iintop(Imul | Imulh)
+  | Ispecific(Imuladd | Imulsub | Imulhadd) -> 2
   (* VFP instructions *)
   | Iaddf
   | Isubf -> 7

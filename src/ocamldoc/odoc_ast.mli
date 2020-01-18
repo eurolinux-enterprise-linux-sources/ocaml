@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** The module for analysing the typed abstract syntax tree and source code and creating modules, classes, ..., elements.*)
 
@@ -30,20 +33,15 @@ module Typedtree_search :
          @raise Not_found if the module was not found.*)
       val search_module : tab -> string -> Typedtree.module_expr
 
-      (** This function returns the [Types.module_type] associated to the given module type name,
+      (** This function returns the [Typedtree.module_type] associated to the given module type name,
          in the given table.
          @raise Not_found if the module type was not found.*)
-      val search_module_type : tab -> string -> Typedtree.module_type
+      val search_module_type : tab -> string -> Typedtree.module_type_declaration
 
-      (** This function returns the [Types.exception_declaration] associated to the given exception name,
+      (** This function returns the [Typedtree.type_extension] associated to the given extension name,
          in the given table.
-         @raise Not_found if the exception was not found.*)
-      val search_exception : tab -> string -> Typedtree.exception_declaration
-
-      (** This function returns the [Path.t] associated to the given exception rebind name,
-         in the table.
-         @raise Not_found if the exception rebind was not found.*)
-      val search_exception_rebind : tab -> string -> Path.t
+         @raise Not_found if the extension was not found.*)
+      val search_extension : tab -> string -> Typedtree.type_extension
 
       (** This function returns the [Typedtree.type_declaration] associated to the given type name,
          in the given table.
@@ -55,7 +53,7 @@ module Typedtree_search :
          @raise Not_found if the class was not found. *)
       val search_class_exp : tab -> string -> (Typedtree.class_expr * (Types.type_expr list))
 
-      (** This function returns the [Types.cltype_declaration] associated to the given class type name,
+      (** This function returns the [Typedtree.class_type_declaration] associated to the given class type name,
          in the given table.
          @raise Not_found if the class type was not found. *)
       val search_class_type_declaration : tab -> string -> Typedtree.class_type_declaration

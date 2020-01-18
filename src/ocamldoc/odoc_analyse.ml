@@ -1,23 +1,23 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Analysis of source files. This module is strongly inspired from
     driver/main.ml :-) *)
 
 let print_DEBUG s = print_string s ; print_newline ()
 
-open Config
-open Clflags
-open Misc
 open Format
 open Typedtree
 
@@ -27,18 +27,34 @@ open Typedtree
    then the directories specified with the -I option (in command-line order),
    then the standard library directory. *)
 let init_path () =
-  load_path :=
+  Config.load_path :=
     "" :: List.rev (Config.standard_library :: !Clflags.include_dirs);
   Env.reset_cache ()
 
 (** Return the initial environment in which compilation proceeds. *)
 let initial_env () =
-  try
-    if !Clflags.nopervasives
-    then Env.initial
-    else Env.open_pers_signature "Pervasives" Env.initial
-  with Not_found ->
-    fatal_error "cannot open pervasives.cmi"
+  let initial =
+    if !Clflags.unsafe_string then Env.initial_unsafe_string
+    else Env.initial_safe_string
+  in
+  let initial =
+    (* Open the Pervasives module by reading directly the corresponding cmi
+       file to avoid troubles when building the documentation for the
+       Pervasives modules.
+       Another option might be to add a -nopervasives option to ocamldoc and update
+       stdlib documentation's build process. *)
+    try
+      Env.open_pers_signature "Pervasives" initial
+    with Not_found ->
+      Misc.fatal_error @@ Printf.sprintf "cannot open pervasives.cmi" in
+  let open_mod env m =
+    let open Asttypes in
+    let lid = {loc = Location.in_file "ocamldoc command line";
+               txt = Longident.parse m } in
+    snd (Typemod.type_open_ Override env lid.loc lid) in
+  (* Open the list of modules given as arguments of the "-open" flag
+     The list is reversed to open the modules in the left-to-right order *)
+  List.fold_left open_mod initial (List.rev !Clflags.open_modules)
 
 (** Optionally preprocess a source file *)
 let preprocess sourcefile =
@@ -49,19 +65,30 @@ let preprocess sourcefile =
       Pparse.report_error err;
     exit 2
 
-let (++) x f = f x
-
 (** Analysis of an implementation file. Returns (Some typedtree) if
    no error occured, else None and an error message is printed.*)
-let process_implementation_file ppf sourcefile =
+
+let tool_name = "ocamldoc"
+
+(** Deactivate the generation of docstrings in the lexer *)
+let no_docstring f x =
+  Lexer.handle_docstrings := false;
+  let result = f x in
+  Lexer.handle_docstrings := true;
+  result
+
+let process_implementation_file sourcefile =
   init_path ();
   let prefixname = Filename.chop_extension sourcefile in
-  let modulename = String.capitalize(Filename.basename prefixname) in
+  let modulename = String.capitalize_ascii(Filename.basename prefixname) in
   Env.set_unit_name modulename;
   let inputfile = preprocess sourcefile in
   let env = initial_env () in
   try
-    let parsetree = Pparse.file Format.err_formatter inputfile Parse.implementation ast_impl_magic_number in
+    let parsetree =
+      Pparse.file ~tool_name Format.err_formatter inputfile
+        (no_docstring Parse.implementation) Pparse.Structure
+    in
     let typedtree =
       Typemod.type_implementation
         sourcefile prefixname modulename env parsetree
@@ -83,14 +110,17 @@ let process_implementation_file ppf sourcefile =
 
 (** Analysis of an interface file. Returns (Some signature) if
    no error occured, else None and an error message is printed.*)
-let process_interface_file ppf sourcefile =
+let process_interface_file sourcefile =
   init_path ();
   let prefixname = Filename.chop_extension sourcefile in
-  let modulename = String.capitalize(Filename.basename prefixname) in
+  let modulename = String.capitalize_ascii(Filename.basename prefixname) in
   Env.set_unit_name modulename;
   let inputfile = preprocess sourcefile in
-  let ast = Pparse.file Format.err_formatter inputfile Parse.interface ast_intf_magic_number in
-  let sg = Typemod.transl_signature (initial_env()) ast in
+  let ast =
+    Pparse.file ~tool_name Format.err_formatter inputfile
+      (no_docstring Parse.interface) Pparse.Signature
+  in
+  let sg = Typemod.type_interface sourcefile (initial_env()) ast in
   Warnings.check_fatal ();
   (ast, sg, inputfile)
 
@@ -100,63 +130,19 @@ module Ast_analyser = Odoc_ast.Analyser (Odoc_comments.Basic_info_retriever)
 (** The module used to analyse the parse tree and typed tree of an interface file.*)
 module Sig_analyser = Odoc_sig.Analyser (Odoc_comments.Basic_info_retriever)
 
-(** Handle an error. This is a partial copy of the compiler
-   driver/error.ml file. We do this because there are
-   some differences between the possibly raised exceptions
-   in the bytecode (error.ml) and opt (opterros.ml) compilers
-   and we don't want to take care of this. Besises, these
-   differences only concern code generation (i believe).*)
+(** Handle an error. *)
+
 let process_error exn =
-  let report ppf = function
-  | Lexer.Error(err, loc) ->
-      Location.print_error ppf loc;
-      Lexer.report_error ppf err
-  | Syntaxerr.Error err ->
-      Syntaxerr.report_error ppf err
-  | Env.Error err ->
-      Location.print_error_cur_file ppf;
-      Env.report_error ppf err
-  | Cmi_format.Error err ->
-      Location.print_error_cur_file ppf;
-      Cmi_format.report_error ppf err
-  | Ctype.Tags(l, l') ->
-      Location.print_error_cur_file ppf;
-      fprintf ppf
-      "In this program,@ variant constructors@ `%s and `%s@ \
-       have the same hash value." l l'
-  | Typecore.Error(loc, env, err) ->
-      Location.print_error ppf loc; Typecore.report_error env ppf err
-  | Typetexp.Error(loc, env, err) ->
-      Location.print_error ppf loc; Typetexp.report_error env ppf err
-  | Typedecl.Error(loc, err) ->
-      Location.print_error ppf loc; Typedecl.report_error ppf err
-  | Includemod.Error err ->
-      Location.print_error_cur_file ppf;
-      Includemod.report_error ppf err
-  | Typemod.Error(loc, env, err) ->
-      Location.print_error ppf loc; Typemod.report_error env ppf err
-  | Translcore.Error(loc, err) ->
-      Location.print_error ppf loc; Translcore.report_error ppf err
-  | Sys_error msg ->
-      Location.print_error_cur_file ppf;
-      fprintf ppf "I/O error: %s" msg
-  | Typeclass.Error(loc, env, err) ->
-      Location.print_error ppf loc; Typeclass.report_error env ppf err
-  | Translclass.Error(loc, err) ->
-      Location.print_error ppf loc; Translclass.report_error ppf err
-  | Warnings.Errors (n) ->
-      Location.print_error_cur_file ppf;
-      fprintf ppf "Some fatal warnings were triggered (%d occurrences)" n
-  | x ->
-      fprintf ppf "@]";
-      fprintf ppf
-        "Compilation error(%s). Use the OCaml compiler to get more details."
-        (Printexc.to_string x)
-  in
-  Format.fprintf Format.err_formatter "@[%a@]@." report exn
+  match Location.error_of_exn exn with
+  | Some err ->
+      fprintf Format.err_formatter "@[%a@]@." Location.report_error err
+  | None ->
+      fprintf Format.err_formatter
+        "Compilation error(%s). Use the OCaml compiler to get more details.@."
+        (Printexc.to_string exn)
 
 (** Process the given file, according to its extension. Return the Module.t created, if any.*)
-let process_file ppf sourcefile =
+let process_file sourcefile =
   if !Odoc_global.verbose then
     (
      let f = match sourcefile with
@@ -172,7 +158,7 @@ let process_file ppf sourcefile =
       (
        Location.input_name := file;
        try
-         let (parsetree_typedtree_opt, input_file) = process_implementation_file ppf file in
+         let (parsetree_typedtree_opt, input_file) = process_implementation_file file in
          match parsetree_typedtree_opt with
            None ->
              None
@@ -204,7 +190,7 @@ let process_file ppf sourcefile =
       (
        Location.input_name := file;
        try
-         let (ast, signat, input_file) = process_interface_file ppf file in
+         let (ast, signat, input_file) = process_interface_file file in
          let file_module = Sig_analyser.analyse_signature file
              !Location.input_name ast signat.sig_type
          in
@@ -237,22 +223,23 @@ let process_file ppf sourcefile =
             try Filename.chop_extension file
             with _ -> file
           in
-          String.capitalize (Filename.basename s)
+          String.capitalize_ascii (Filename.basename s)
         in
         let txt =
           try Odoc_text.Texter.text_of_string (Odoc_misc.input_file_as_string file)
           with Odoc_text.Text_syntax (l, c, s) ->
             raise (Failure (Odoc_messages.text_parse_error l c s))
         in
+         let m_info =
+          Some Odoc_types.{dummy_info with i_desc= Some txt } in
         let m =
           {
             Odoc_module.m_name = mod_name ;
             Odoc_module.m_type = Types.Mty_signature [] ;
-            Odoc_module.m_info = None ;
+            Odoc_module.m_info;
             Odoc_module.m_is_interface = true ;
             Odoc_module.m_file = file ;
-            Odoc_module.m_kind = Odoc_module.Module_struct
-              [Odoc_module.Element_module_comment txt] ;
+            Odoc_module.m_kind = Odoc_module.Module_struct [] ;
             Odoc_module.m_loc =
               { Odoc_types.loc_impl = None ;
                 Odoc_types.loc_inter = Some (Location.in_file file) } ;
@@ -362,6 +349,7 @@ let rec remove_module_elements_between_stop keep eles =
           else
             f keep q
       | Odoc_module.Element_value _
+      | Odoc_module.Element_type_extension _
       | Odoc_module.Element_exception _
       | Odoc_module.Element_type _ ->
           if keep then
@@ -415,7 +403,7 @@ let analyse_files ?(init=[]) files =
     (List.fold_left
        (fun acc -> fun file ->
          try
-           match process_file Format.err_formatter file with
+           match process_file file with
              None ->
                acc
            | Some m ->
@@ -462,7 +450,7 @@ let analyse_files ?(init=[]) files =
      print_string Odoc_messages.cross_referencing;
      print_newline ()
     );
-  let _ = Odoc_cross.associate modules_list in
+  Odoc_cross.associate modules_list;
 
   if !Odoc_global.verbose then
     (
@@ -471,7 +459,7 @@ let analyse_files ?(init=[]) files =
     );
 
   if !Odoc_global.sort_modules then
-    Sort.list (fun m1 -> fun m2 -> m1.Odoc_module.m_name < m2.Odoc_module.m_name) merged_modules
+    List.sort (fun m1 m2 -> compare m1.Odoc_module.m_name m2.Odoc_module.m_name) merged_modules
   else
     merged_modules
 

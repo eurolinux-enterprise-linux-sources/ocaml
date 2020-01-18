@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2002 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2002 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Consistency tables: for checking consistency of module CRCs *)
 
@@ -40,9 +43,10 @@ val source: t -> string -> string
          if the latter has an associated CRC in [tbl].
          Raise [Not_found] otherwise. *)
 
-val extract: t -> (string * Digest.t) list
-      (* Return all bindings ([name], [crc]) contained in the given
-         table. *)
+val extract: string list -> t -> (string * Digest.t option) list
+      (* [extract tbl names] returns an associative list mapping each string
+         in [names] to the CRC associated with it in [tbl]. If no CRC is
+         associated with a name then it is mapped to [None]. *)
 
 val filter: (string -> bool) -> t -> unit
       (* [filter pred tbl] removes from [tbl] table all (name, CRC) pairs

@@ -1,54 +1,40 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
-#include <mlvalues.h>
-#include <alloc.h>
+#include <caml/mlvalues.h>
+#include <caml/alloc.h>
 #include <time.h>
 
 #include "unixsupport.h"
 
-#ifdef HAS_MKTIME
-static double initial_time = 0; /* 0 means uninitialized */
-#else
-static time_t initial_time = 0; /* 0 means uninitialized */
-#endif
-static DWORD initial_tickcount;
+/* Unix epoch as a Windows timestamp in hundreds of ns */
+#define epoch_ft 116444736000000000.0;
 
 CAMLprim value unix_gettimeofday(value unit)
 {
-  DWORD tickcount = GetTickCount();
-  SYSTEMTIME st;
-  struct tm tm;
-  if (initial_time == 0 || tickcount < initial_tickcount) {
-    initial_tickcount = tickcount;
-#ifdef HAS_MKTIME
-    GetLocalTime(&st);
-    tm.tm_sec = st.wSecond;
-    tm.tm_min = st.wMinute;
-    tm.tm_hour = st.wHour;
-    tm.tm_mday = st.wDay;
-    tm.tm_mon = st.wMonth - 1;
-    tm.tm_year = st.wYear - 1900;
-    tm.tm_wday = 0;
-    tm.tm_yday = 0;
-    tm.tm_isdst = -1;
-    initial_time = ((double) mktime(&tm) + (double) st.wMilliseconds * 1e-3);
+  FILETIME ft;
+  double tm;
+  GetSystemTimeAsFileTime(&ft);
+#if defined(_MSC_VER) && _MSC_VER < 1300
+  /* This compiler can't cast uint64_t to double! Fortunately, this doesn't
+     matter since SYSTEMTIME is only ever 63-bit (maximum value 31-Dec-30827
+     23:59:59.999, and it requires some skill to set the clock past 2099!)
+   */
+  tm = *(int64_t *)&ft - epoch_ft; /* shift to Epoch-relative time */
 #else
-    initial_time = time(NULL);
+  tm = *(uint64_t *)&ft - epoch_ft; /* shift to Epoch-relative time */
 #endif
-    return copy_double((double) initial_time);
-  } else {
-    return copy_double((double) initial_time +
-                       (double) (tickcount - initial_tickcount) * 1e-3);
-  }
+  return caml_copy_double(tm * 1e-7);  /* tm is in 100ns */
 }

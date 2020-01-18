@@ -1,26 +1,30 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
+
+#define CAML_INTERNALS
 
 #include <errno.h>
-#include <mlvalues.h>
-#include <memory.h>
-#include <alloc.h>
-#include <signals.h>
-#include "unixsupport.h"
-#include "cst2constr.h"
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <io.h>
+#include <caml/mlvalues.h>
+#include <caml/memory.h>
+#include <caml/alloc.h>
+#include <caml/signals.h>
+#include <caml/io.h>
+#include "unixsupport.h"
+#include "cst2constr.h"
 
 #ifndef S_IFLNK
 #define S_IFLNK 0
@@ -48,11 +52,16 @@ static value stat_aux(int use_64, struct stat *buf)
   CAMLparam0();
   CAMLlocal5(atime, mtime, ctime, offset, v);
 
-  atime = copy_double((double) buf->st_atime);
-  mtime = copy_double((double) buf->st_mtime);
-  ctime = copy_double((double) buf->st_ctime);
+  #include "nanosecond_stat.h"
+  atime = caml_copy_double((double) buf->st_atime
+                           + (NSEC(buf, a) / 1000000000.0));
+  mtime = caml_copy_double((double) buf->st_mtime
+                           + (NSEC(buf, m) / 1000000000.0));
+  ctime = caml_copy_double((double) buf->st_ctime
+                           + (NSEC(buf, c) / 1000000000.0));
+  #undef NSEC
   offset = use_64 ? Val_file_offset(buf->st_size) : Val_int (buf->st_size);
-  v = alloc_small(12, 0);
+  v = caml_alloc_small(12, 0);
   Field (v, 0) = Val_int (buf->st_dev);
   Field (v, 1) = Val_int (buf->st_ino);
   Field (v, 2) = cst_to_constr(buf->st_mode & S_IFMT, file_kind_table,
@@ -75,7 +84,8 @@ CAMLprim value unix_stat(value path)
   int ret;
   struct stat buf;
   char * p;
-  p = caml_stat_alloc_string(path);
+  caml_unix_check_path(path, "stat");
+  p = caml_strdup(String_val(path));
   caml_enter_blocking_section();
   ret = stat(p, &buf);
   caml_leave_blocking_section();
@@ -92,7 +102,8 @@ CAMLprim value unix_lstat(value path)
   int ret;
   struct stat buf;
   char * p;
-  p = caml_stat_alloc_string(path);
+  caml_unix_check_path(path, "lstat");
+  p = caml_strdup(String_val(path));
   caml_enter_blocking_section();
 #ifdef HAS_SYMLINK
   ret = lstat(p, &buf);
@@ -126,7 +137,8 @@ CAMLprim value unix_stat_64(value path)
   int ret;
   struct stat buf;
   char * p;
-  p = caml_stat_alloc_string(path);
+  caml_unix_check_path(path, "stat");
+  p = caml_strdup(String_val(path));
   caml_enter_blocking_section();
   ret = stat(p, &buf);
   caml_leave_blocking_section();
@@ -141,7 +153,8 @@ CAMLprim value unix_lstat_64(value path)
   int ret;
   struct stat buf;
   char * p;
-  p = caml_stat_alloc_string(path);
+  caml_unix_check_path(path, "lstat");
+  p = caml_strdup(String_val(path));
   caml_enter_blocking_section();
 #ifdef HAS_SYMLINK
   ret = lstat(p, &buf);

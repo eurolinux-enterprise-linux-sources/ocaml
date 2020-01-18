@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Disassembler for executable and .cmo object files *)
 
@@ -23,6 +26,7 @@ open Cmo_format
 open Printf
 
 let print_locations = ref true
+let print_reloc_info = ref false
 
 (* Read signed and unsigned integers *)
 
@@ -82,7 +86,7 @@ let print_float f =
 let rec print_struct_const = function
     Const_base(Const_int i) -> printf "%d" i
   | Const_base(Const_float f) -> print_float f
-  | Const_base(Const_string s) -> printf "%S" s
+  | Const_base(Const_string (s, _)) -> printf "%S" s
   | Const_immstring s -> printf "%S" s
   | Const_base(Const_char c) -> printf "%C" c
   | Const_base(Const_int32 i) -> printf "%ldl" i
@@ -394,6 +398,8 @@ let op_shapes = [
   opSTOP, Nothing;
   opEVENT, Nothing;
   opBREAK, Nothing;
+  opRERAISE, Nothing;
+  opRAISE_NOTRACE, Nothing;
 ];;
 
 let print_event ev =
@@ -412,52 +418,54 @@ let print_instr ic =
   if op >= Array.length names_of_instructions || op < 0
   then (print_string "*** unknown opcode : "; print_int op)
   else print_string names_of_instructions.(op);
-  print_string " ";
-  begin try match List.assoc op op_shapes with
-  | Uint -> print_int (inputu ic)
-  | Sint -> print_int (inputs ic)
-  | Uint_Uint
-     -> print_int (inputu ic); print_string ", "; print_int (inputu ic)
-  | Disp -> let p = currpc ic in print_int (p + inputs ic)
-  | Uint_Disp
-     -> print_int (inputu ic); print_string ", ";
-        let p = currpc ic in print_int (p + inputs ic)
-  | Sint_Disp
-     -> print_int (inputs ic); print_string ", ";
-        let p = currpc ic in print_int (p + inputs ic)
-  | Getglobal -> print_getglobal_name ic
-  | Getglobal_Uint
-     -> print_getglobal_name ic; print_string ", "; print_int (inputu ic)
-  | Setglobal -> print_setglobal_name ic
-  | Primitive -> print_primitive ic
-  | Uint_Primitive
-     -> print_int(inputu ic); print_string ", "; print_primitive ic
-  | Switch
-     -> let n = inputu ic in
-        let orig = currpc ic in
-        for i = 0 to (n land 0xFFFF) - 1 do
-          print_string "\n        int "; print_int i; print_string " -> ";
-          print_int(orig + inputs ic);
-        done;
-        for i = 0 to (n lsr 16) - 1 do
-          print_string "\n        tag "; print_int i; print_string " -> ";
-          print_int(orig + inputs ic);
-        done;
-  | Closurerec
-     -> let nfuncs = inputu ic in
-        let nvars = inputu ic in
-        let orig = currpc ic in
-        print_int nvars;
-        for _i = 0 to nfuncs - 1 do
-          print_string ", ";
-          print_int (orig + inputs ic);
-        done;
-  | Pubmet
-     -> let tag = inputs ic in
-        let _cache = inputu ic in
-        print_int tag
-  | Nothing -> ()
-  with Not_found -> print_string "(unknown arguments)"
+  begin try
+    let shape = List.assoc op op_shapes in
+    if shape <> Nothing then print_string " ";
+    match shape with
+    | Uint -> print_int (inputu ic)
+    | Sint -> print_int (inputs ic)
+    | Uint_Uint
+       -> print_int (inputu ic); print_string ", "; print_int (inputu ic)
+    | Disp -> let p = currpc ic in print_int (p + inputs ic)
+    | Uint_Disp
+       -> print_int (inputu ic); print_string ", ";
+          let p = currpc ic in print_int (p + inputs ic)
+    | Sint_Disp
+       -> print_int (inputs ic); print_string ", ";
+          let p = currpc ic in print_int (p + inputs ic)
+    | Getglobal -> print_getglobal_name ic
+    | Getglobal_Uint
+       -> print_getglobal_name ic; print_string ", "; print_int (inputu ic)
+    | Setglobal -> print_setglobal_name ic
+    | Primitive -> print_primitive ic
+    | Uint_Primitive
+       -> print_int(inputu ic); print_string ", "; print_primitive ic
+    | Switch
+       -> let n = inputu ic in
+          let orig = currpc ic in
+          for i = 0 to (n land 0xFFFF) - 1 do
+            print_string "\n        int "; print_int i; print_string " -> ";
+            print_int(orig + inputs ic);
+          done;
+          for i = 0 to (n lsr 16) - 1 do
+            print_string "\n        tag "; print_int i; print_string " -> ";
+            print_int(orig + inputs ic);
+          done;
+    | Closurerec
+       -> let nfuncs = inputu ic in
+          let nvars = inputu ic in
+          let orig = currpc ic in
+          print_int nvars;
+          for _i = 0 to nfuncs - 1 do
+            print_string ", ";
+            print_int (orig + inputs ic);
+          done;
+    | Pubmet
+       -> let tag = inputs ic in
+          let _cache = inputu ic in
+          print_int tag
+    | Nothing -> ()
+  with Not_found -> print_string " (unknown arguments)"
   end;
   print_string "\n";
 ;;
@@ -481,8 +489,8 @@ let print_reloc (info, pos) =
 
 (* Print a .cmo file *)
 
-let dump_obj filename ic =
-  let buffer = Misc.input_bytes ic (String.length cmo_magic_number) in
+let dump_obj ic =
+  let buffer = really_input_string ic (String.length cmo_magic_number) in
   if buffer <> cmo_magic_number then begin
     prerr_endline "Not an object file"; exit 2
   end;
@@ -490,9 +498,12 @@ let dump_obj filename ic =
   seek_in ic cu_pos;
   let cu = (input_value ic : compilation_unit) in
   reloc := cu.cu_reloc;
+  if !print_reloc_info then
+    List.iter print_reloc cu.cu_reloc;
   if cu.cu_debug > 0 then begin
     seek_in ic cu.cu_debug;
     let evl = (input_value ic : debug_event list) in
+    ignore (input_value ic); (* Skip the list of absolute directory names *)
     record_events 0 evl
   end;
   seek_in ic cu.cu_pos;
@@ -501,14 +512,8 @@ let dump_obj filename ic =
 (* Read the primitive table from an executable *)
 
 let read_primitive_table ic len =
-  let p = Misc.input_bytes ic len in
-  let rec split beg cur =
-    if cur >= len then []
-    else if p.[cur] = '\000' then
-      String.sub p beg (cur - beg) :: split (cur + 1) (cur + 1)
-    else
-      split beg (cur + 1) in
-  Array.of_list(split 0 0)
+  let p = really_input_string ic len in
+  String.split_on_char '\000' p |> List.filter ((<>) "") |> Array.of_list
 
 (* Print an executable file *)
 
@@ -518,7 +523,7 @@ let dump_exe ic =
   primitives := read_primitive_table ic prim_size;
   ignore(Bytesections.seek_section ic "DATA");
   let init_data = (input_value ic : Obj.t array) in
-  globals := Array.create (Array.length init_data) Empty;
+  globals := Array.make (Array.length init_data) Empty;
   for i = 0 to Array.length init_data - 1 do
     !globals.(i) <- Constant (init_data.(i))
   done;
@@ -531,6 +536,7 @@ let dump_exe ic =
     for _i = 1 to num_eventlists do
       let orig = input_binary_int ic in
       let evl = (input_value ic : debug_event list) in
+      ignore (input_value ic); (* Skip the list of absolute directory names *)
       record_events orig evl
     done
   with Not_found -> ()
@@ -540,6 +546,13 @@ let dump_exe ic =
 
 let arg_list = [
   "-noloc", Arg.Clear print_locations, " : don't print source information";
+  "-reloc", Arg.Set print_reloc_info, " : print relocation information";
+  "-args", Arg.Expand Arg.read_arg,
+     "<file> Read additional newline separated command line arguments \n\
+     \      from <file>";
+  "-args0", Arg.Expand Arg.read_arg0,
+     "<file> Read additional NUL separated command line arguments from \n\
+     \      <file>";
 ]
 let arg_usage =
   Printf.sprintf "%s [OPTIONS] FILES : dump content of bytecode files"
@@ -555,13 +568,13 @@ let arg_fun filename =
   begin try
           objfile := false; dump_exe ic
     with Bytesections.Bad_magic_number ->
-      objfile := true; seek_in ic 0; dump_obj filename ic
+      objfile := true; seek_in ic 0; dump_obj ic
   end;
   close_in ic;
   printf "## end of ocaml dump of %S\n%!" filename
 
 let main() =
-  Arg.parse arg_list arg_fun arg_usage;
+  Arg.parse_expand arg_list arg_fun arg_usage;
     exit 0
 
 let _ = main ()

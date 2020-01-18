@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*        Daniel de Rauglaudre, projet Cristal, INRIA Rocquencourt     *)
-(*                                                                     *)
-(*  Copyright 1997 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../LICENSE.     *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*         Daniel de Rauglaudre, projet Cristal, INRIA Rocquencourt       *)
+(*                                                                        *)
+(*   Copyright 1997 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Streams and parsers. *)
 
@@ -46,6 +48,10 @@ val of_list : 'a list -> 'a t
 val of_string : string -> char t
 (** Return the stream of the characters of the string parameter. *)
 
+val of_bytes : bytes -> char t
+(** Return the stream of the characters of the bytes parameter.
+    @since 4.02.0 *)
+
 val of_channel : in_channel -> char t
 (** Return the stream of the characters read from the input channel. *)
 
@@ -61,10 +67,10 @@ val iter : ('a -> unit) -> 'a t -> unit
 
 val next : 'a t -> 'a
 (** Return the first element of the stream and remove it from the
-   stream. Raise Stream.Failure if the stream is empty. *)
+   stream. Raise {!Stream.Failure} if the stream is empty. *)
 
 val empty : 'a t -> unit
-(** Return [()] if the stream is empty, else raise [Stream.Failure]. *)
+(** Return [()] if the stream is empty, else raise {!Stream.Failure}. *)
 
 
 (** {6 Useful functions} *)

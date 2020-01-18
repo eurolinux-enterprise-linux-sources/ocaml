@@ -1,14 +1,17 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the Q Public License version 1.0.               */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 /* The grammar for lexer definitions */
 
@@ -49,14 +52,14 @@ let as_cset = function
 %token <string> Tstring
 %token <Syntax.location> Taction
 %token Trule Tparse Tparse_shortest Tand Tequal Tend Tor Tunderscore Teof
-       Tlbracket Trbracket
-%token Tstar Tmaybe Tplus Tlparen Trparen Tcaret Tdash Tlet Tas Tsharp
+       Tlbracket Trbracket Trefill
+%token Tstar Tmaybe Tplus Tlparen Trparen Tcaret Tdash Tlet Tas Thash
 
 %right Tas
 %left Tor
 %nonassoc CONCAT
 %nonassoc Tmaybe Tstar Tplus
-%left Tsharp
+%left Thash
 %nonassoc Tident Tchar Tstring Tunderscore Teof Tlbracket Tlparen
 
 %start lexer_definition
@@ -65,10 +68,12 @@ let as_cset = function
 %%
 
 lexer_definition:
-    header named_regexps Trule definition other_definitions header Tend
+    header named_regexps refill_handler Trule definition other_definitions
+    header Tend
         { {header = $1;
-           entrypoints = $4 :: List.rev $5;
-           trailer = $6} }
+           refill_handler = $3;
+           entrypoints = $5 :: List.rev $6;
+           trailer = $7} }
 ;
 header:
     Taction
@@ -88,6 +93,10 @@ other_definitions:
         { $3::$1 }
   | /*epsilon*/
         { [] }
+;
+refill_handler:
+  | Trefill Taction { Some $2 }
+  | /*empty*/ { None }
 ;
 definition:
     Tident arguments Tequal Tparse entry
@@ -136,7 +145,7 @@ regexp:
         { Alternative(Epsilon, $1) }
   | regexp Tplus
         { Sequence(Repetition (remove_as $1), $1) }
-  | regexp Tsharp regexp
+  | regexp Thash regexp
         {
           let s1 = as_cset $1
           and s2 = as_cset $3 in

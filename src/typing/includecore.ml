@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Inclusion checks for the core language *)
 
@@ -26,8 +29,11 @@ let value_descriptions env vd1 vd2 =
     match (vd1.val_kind, vd2.val_kind) with
         (Val_prim p1, Val_prim p2) ->
           if p1 = p2 then Tcoerce_none else raise Dont_match
-      | (Val_prim p, _) -> Tcoerce_primitive p
-      | (_, Val_prim p) -> raise Dont_match
+      | (Val_prim p, _) ->
+          let pc = {pc_desc = p; pc_type = vd2.Types.val_type;
+                  pc_env = env; pc_loc = vd1.Types.val_loc; } in
+          Tcoerce_primitive pc
+      | (_, Val_prim _) -> raise Dont_match
       | (_, _) -> Tcoerce_none
   end else
     raise Dont_match
@@ -45,7 +51,7 @@ let private_flags decl1 decl2 =
 
 let is_absrow env ty =
   match ty.desc with
-    Tconstr(Pident id, _, _) ->
+    Tconstr(Pident _, _, _) ->
       begin match Ctype.expand_head env ty with
         {desc=Tobject _|Tvariant _} -> true
       | _ -> false
@@ -92,7 +98,7 @@ let type_manifest env ty1 params1 ty2 params2 priv2 =
       Ctype.equal env true (ty1::params1) (rest2::params2) &&
       let (fields1,rest1) = Ctype.flatten_fields fi1 in
       (match rest1 with {desc=Tnil|Tvar _|Tconstr _} -> true | _ -> false) &&
-      let pairs, miss1, miss2 = Ctype.associate_fields fields1 fields2 in
+      let pairs, _miss1, miss2 = Ctype.associate_fields fields1 fields2 in
       miss2 = [] &&
       let tl1, tl2 =
         List.split (List.map (fun (_,_,t1,_,t2) -> t1, t2) pairs) in
@@ -120,7 +126,9 @@ type type_mismatch =
   | Field_arity of Ident.t
   | Field_names of int * Ident.t * Ident.t
   | Field_missing of bool * Ident.t
-  | Record_representation of bool
+  | Record_representation of bool   (* true means second one is unboxed float *)
+  | Unboxed_representation of bool  (* true means second one is unboxed *)
+  | Immediate
 
 let report_type_mismatch0 first second decl ppf err =
   let pr fmt = Format.fprintf ppf fmt in
@@ -147,6 +155,11 @@ let report_type_mismatch0 first second decl ppf err =
       pr "Their internal representations differ:@ %s %s %s"
         (if b then second else first) decl
         "uses unboxed float representation"
+  | Unboxed_representation b ->
+      pr "Their internal representations differ:@ %s %s %s"
+         (if b then second else first) decl
+         "uses unboxed representation"
+  | Immediate -> pr "%s is not an immediate type" first
 
 let report_type_mismatch first second decl ppf =
   List.iter
@@ -154,72 +167,63 @@ let report_type_mismatch first second decl ppf =
       if err = Manifest then () else
       Format.fprintf ppf "@ %a." (report_type_mismatch0 first second decl) err)
 
-let rec compare_variants env decl1 decl2 n cstrs1 cstrs2 =
+let rec compare_constructor_arguments env cstr params1 params2 arg1 arg2 =
+  match arg1, arg2 with
+  | Types.Cstr_tuple arg1, Types.Cstr_tuple arg2 ->
+      if List.length arg1 <> List.length arg2 then [Field_arity cstr]
+      else if
+        (* Ctype.equal must be called on all arguments at once, cf. PR#7378 *)
+        Ctype.equal env true (params1 @ arg1) (params2 @ arg2)
+      then [] else [Field_type cstr]
+  | Types.Cstr_record l1, Types.Cstr_record l2 ->
+      compare_records env params1 params2 0 l1 l2
+  | _ -> [Field_type cstr]
+
+and compare_variants env params1 params2 n cstrs1 cstrs2 =
   match cstrs1, cstrs2 with
     [], []           -> []
-  | [], (cstr2,_,_)::_ -> [Field_missing (true, cstr2)]
-  | (cstr1,_,_)::_, [] -> [Field_missing (false, cstr1)]
-  | (cstr1, arg1, ret1)::rem1, (cstr2, arg2,ret2)::rem2 ->
+  | [], c::_ -> [Field_missing (true, c.Types.cd_id)]
+  | c::_, [] -> [Field_missing (false, c.Types.cd_id)]
+  | {Types.cd_id=cstr1; cd_args=arg1; cd_res=ret1}::rem1,
+    {Types.cd_id=cstr2; cd_args=arg2; cd_res=ret2}::rem2 ->
       if Ident.name cstr1 <> Ident.name cstr2 then
         [Field_names (n, cstr1, cstr2)]
-      else if List.length arg1 <> List.length arg2 then
-        [Field_arity cstr1]
-      else match ret1, ret2 with
-      | Some r1, Some r2 when not (Ctype.equal env true [r1] [r2]) ->
-          [Field_type cstr1]
-      | Some _, None | None, Some _ ->
-          [Field_type cstr1]
-      | _ ->
-          if Misc.for_all2
-              (fun ty1 ty2 ->
-                Ctype.equal env true (ty1::decl1.type_params)
-                  (ty2::decl2.type_params))
-              (arg1) (arg2)
-          then
-            compare_variants env decl1 decl2 (n+1) rem1 rem2
-          else [Field_type cstr1]
+      else
+        let r =
+          match ret1, ret2 with
+          | Some r1, Some r2 ->
+              if Ctype.equal env true [r1] [r2] then
+                compare_constructor_arguments env cstr1 [r1] [r2] arg1 arg2
+              else [Field_type cstr1]
+          | Some _, None | None, Some _ ->
+              [Field_type cstr1]
+          | _ ->
+              compare_constructor_arguments env cstr1
+                params1 params2 arg1 arg2
+        in
+        if r <> [] then r
+        else compare_variants env params1 params2 (n+1) rem1 rem2
 
 
-let rec compare_records env decl1 decl2 n labels1 labels2 =
+and compare_records env params1 params2 n labels1 labels2 =
   match labels1, labels2 with
     [], []           -> []
-  | [], (lab2,_,_)::_ -> [Field_missing (true, lab2)]
-  | (lab1,_,_)::_, [] -> [Field_missing (false, lab1)]
-  | (lab1, mut1, arg1)::rem1, (lab2, mut2, arg2)::rem2 ->
+  | [], l::_ -> [Field_missing (true, l.Types.ld_id)]
+  | l::_, [] -> [Field_missing (false, l.Types.ld_id)]
+  | {Types.ld_id=lab1; ld_mutable=mut1; ld_type=arg1}::rem1,
+    {Types.ld_id=lab2; ld_mutable=mut2; ld_type=arg2}::rem2 ->
       if Ident.name lab1 <> Ident.name lab2
       then [Field_names (n, lab1, lab2)]
       else if mut1 <> mut2 then [Field_mutable lab1] else
-      if Ctype.equal env true (arg1::decl1.type_params)
-                              (arg2::decl2.type_params)
-      then compare_records env decl1 decl2 (n+1) rem1 rem2
+      if Ctype.equal env true (arg1::params1)
+                              (arg2::params2)
+      then (* add arguments to the parameters, cf. PR#7378 *)
+        compare_records env (arg1::params1) (arg2::params2) (n+1) rem1 rem2
       else [Field_type lab1]
 
 let type_declarations ?(equality = false) env name decl1 id decl2 =
   if decl1.type_arity <> decl2.type_arity then [Arity] else
   if not (private_flags decl1 decl2) then [Privacy] else
-  let err = match (decl1.type_kind, decl2.type_kind) with
-      (_, Type_abstract) -> []
-    | (Type_variant cstrs1, Type_variant cstrs2) ->
-        let mark cstrs usage name decl =
-          List.iter
-            (fun (c, _, _) ->
-              Env.mark_constructor_used usage name decl (Ident.name c))
-            cstrs
-        in
-        let usage =
-          if decl1.type_private = Private || decl2.type_private = Public
-          then Env.Positive else Env.Privatize
-        in
-        mark cstrs1 usage name decl1;
-        if equality then mark cstrs2 Env.Positive (Ident.name id) decl2;
-        compare_variants env decl1 decl2 1 cstrs1 cstrs2
-    | (Type_record(labels1,rep1), Type_record(labels2,rep2)) ->
-        let err = compare_records env decl1 decl2 1 labels1 labels2 in
-        if err <> [] || rep1 = rep2 then err else
-        [Record_representation (rep2 = Record_float)]
-    | (_, _) -> [Kind]
-  in
-  if err <> [] then err else
   let err = match (decl1.type_manifest, decl2.type_manifest) with
       (_, None) ->
         if Ctype.equal env true decl1.type_params decl2.type_params
@@ -238,53 +242,97 @@ let type_declarations ?(equality = false) env name decl1 id decl2 =
         else [Constraint]
   in
   if err <> [] then err else
-  let abstr =
-    decl2.type_private = Private ||
-    decl2.type_kind = Type_abstract && decl2.type_manifest = None in
+  let err =
+    match (decl2.type_kind, decl1.type_unboxed.unboxed,
+           decl2.type_unboxed.unboxed) with
+    | Type_abstract, _, _ -> []
+    | _, true, false -> [Unboxed_representation false]
+    | _, false, true -> [Unboxed_representation true]
+    | _ -> []
+  in
+  if err <> [] then err else
+  let err = match (decl1.type_kind, decl2.type_kind) with
+      (_, Type_abstract) -> []
+    | (Type_variant cstrs1, Type_variant cstrs2) ->
+        let mark cstrs usage name decl =
+          List.iter
+            (fun c ->
+              Env.mark_constructor_used usage env name decl
+                                        (Ident.name c.Types.cd_id))
+            cstrs
+        in
+        let usage =
+          if decl1.type_private = Private || decl2.type_private = Public
+          then Env.Positive else Env.Privatize
+        in
+        mark cstrs1 usage name decl1;
+        if equality then mark cstrs2 Env.Positive (Ident.name id) decl2;
+        compare_variants env decl1.type_params decl2.type_params 1 cstrs1 cstrs2
+    | (Type_record(labels1,rep1), Type_record(labels2,rep2)) ->
+        let err = compare_records env decl1.type_params decl2.type_params
+            1 labels1 labels2 in
+        if err <> [] || rep1 = rep2 then err else
+        [Record_representation (rep2 = Record_float)]
+    | (Type_open, Type_open) -> []
+    | (_, _) -> [Kind]
+  in
+  if err <> [] then err else
+  let abstr = decl2.type_kind = Type_abstract && decl2.type_manifest = None in
+  (* If attempt to assign a non-immediate type (e.g. string) to a type that
+   * must be immediate, then we error *)
+  let err =
+    if abstr &&
+       not decl1.type_immediate &&
+       decl2.type_immediate then
+      [Immediate]
+    else []
+  in
+  if err <> [] then err else
+  let abstr = abstr || decl2.type_private = Private in
+  let opn = decl2.type_kind = Type_open && decl2.type_manifest = None in
+  let constrained ty = not (Btype.(is_Tvar (repr ty))) in
   if List.for_all2
       (fun ty (v1,v2) ->
         let open Variance in
         let imp a b = not a || b in
         let (co1,cn1) = get_upper v1 and (co2,cn2) = get_upper v2 in
-        imp abstr (imp co1 co2 && imp cn1 cn2) &&
-        (abstr || Btype.(is_Tvar (repr ty)) || co1 = co2 && cn1 = cn2) &&
+        (if abstr then (imp co1 co2 && imp cn1 cn2)
+         else if opn || constrained ty then (co1 = co2 && cn1 = cn2)
+         else true) &&
         let (p1,n1,i1,j1) = get_lower v1 and (p2,n2,i2,j2) = get_lower v2 in
         imp abstr (imp p2 p1 && imp n2 n1 && imp i2 i1 && imp j2 j1))
       decl2.type_params (List.combine decl1.type_variance decl2.type_variance)
   then [] else [Variance]
 
-(* Inclusion between exception declarations *)
+(* Inclusion between extension constructors *)
 
-let exception_declarations env ed1 ed2 =
-  Misc.for_all2 (fun ty1 ty2 -> Ctype.equal env false [ty1] [ty2])
-    ed1.exn_args ed2.exn_args
-
-(* Inclusion between class types *)
-let encode_val (mut, ty) rem =
-  begin match mut with
-    Asttypes.Mutable   -> Predef.type_unit
-  | Asttypes.Immutable -> Btype.newgenvar ()
-  end
-  ::ty::rem
-
-let meths meths1 meths2 =
-  Meths.fold
-    (fun nam t2 (ml1, ml2) ->
-       (begin try
-          Meths.find nam meths1 :: ml1
-        with Not_found ->
-          ml1
-        end,
-        t2 :: ml2))
-    meths2 ([], [])
-
-let vars vars1 vars2 =
-  Vars.fold
-    (fun lab v2 (vl1, vl2) ->
-       (begin try
-          encode_val (Vars.find lab vars1) vl1
-        with Not_found ->
-          vl1
-        end,
-        encode_val v2 vl2))
-    vars2 ([], [])
+let extension_constructors env id ext1 ext2 =
+  let usage =
+    if ext1.ext_private = Private || ext2.ext_private = Public
+    then Env.Positive else Env.Privatize
+  in
+  Env.mark_extension_used usage env ext1 (Ident.name id);
+  let ty1 =
+    Btype.newgenty (Tconstr(ext1.ext_type_path, ext1.ext_type_params, ref Mnil))
+  in
+  let ty2 =
+    Btype.newgenty (Tconstr(ext2.ext_type_path, ext2.ext_type_params, ref Mnil))
+  in
+  if Ctype.equal env true
+       (ty1 :: ext1.ext_type_params)
+       (ty2 :: ext2.ext_type_params)
+  then
+    if compare_constructor_arguments env (Ident.create "")
+        ext1.ext_type_params ext2.ext_type_params
+        ext1.ext_args ext2.ext_args = [] then
+      if match ext1.ext_ret_type, ext2.ext_ret_type with
+          Some r1, Some r2 when not (Ctype.equal env true [r1] [r2]) -> false
+        | Some _, None | None, Some _ -> false
+        | _ -> true
+      then
+        match ext1.ext_private, ext2.ext_private with
+            Private, Public -> false
+          | _, _ -> true
+      else false
+    else false
+  else false

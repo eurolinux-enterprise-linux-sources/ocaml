@@ -1,15 +1,21 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../../LICENSE.  *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
+
+(* In this module, [@ocaml.warning "-3"] is used in several places
+   that use deprecated functions to preserve legacy behavior.
+   It overrides -w @3 given on the command line. *)
 
 (** String utilities *)
 
@@ -25,16 +31,18 @@ let last_chars s n = String.sub s (String.length s - n) n
 
 module Charset =
   struct
-    type t = string (* of length 32 *)
+    type t = bytes (* of length 32 *)
 
-    (*let empty = String.make 32 '\000'*)
-    let full = String.make 32 '\255'
+    (*let empty = Bytes.make 32 '\000'*)
+    let full = Bytes.make 32 '\255'
 
-    let make_empty () = String.make 32 '\000'
+    let make_empty () = Bytes.make 32 '\000'
 
     let add s c =
       let i = Char.code c in
-      s.[i lsr 3] <- Char.chr(Char.code s.[i lsr 3] lor (1 lsl (i land 7)))
+      Bytes.set s (i lsr 3)
+                (Char.chr (Char.code (Bytes.get s (i lsr 3))
+                           lor (1 lsl (i land 7))))
 
     let add_range s c1 c2 =
       for i = Char.code c1 to Char.code c2 do add s (Char.chr i) done
@@ -46,23 +54,26 @@ module Charset =
       let s = make_empty () in add_range s c1 c2; s
     *)
     let complement s =
-      let r = String.create 32 in
+      let r = Bytes.create 32 in
       for i = 0 to 31 do
-        r.[i] <- Char.chr(Char.code s.[i] lxor 0xFF)
+        Bytes.set r i (Char.chr(Char.code (Bytes.get s i) lxor 0xFF))
       done;
       r
 
     let union s1 s2 =
-      let r = String.create 32 in
+      let r = Bytes.create 32 in
       for i = 0 to 31 do
-        r.[i] <- Char.chr(Char.code s1.[i] lor Char.code s2.[i])
+        Bytes.set r i (Char.chr(Char.code (Bytes.get s1 i)
+                       lor Char.code (Bytes.get s2 i)))
       done;
       r
 
     let disjoint s1 s2 =
       try
         for i = 0 to 31 do
-          if Char.code s1.[i] land Char.code s2.[i] <> 0 then raise Exit
+          if Char.code (Bytes.get s1 i) land Char.code (Bytes.get s2 i)
+             <> 0
+          then raise Exit
         done;
         true
       with Exit ->
@@ -70,7 +81,7 @@ module Charset =
 
     let iter fn s =
       for i = 0 to 31 do
-        let c = Char.code s.[i] in
+        let c = Char.code (Bytes.get s i) in
         if c <> 0 then
           for j = 0 to 7 do
             if c land (1 lsl j) <> 0 then fn (Char.chr ((i lsl 3) + j))
@@ -78,14 +89,14 @@ module Charset =
       done
 
     let expand s =
-      let r = String.make 256 '\000' in
-      iter (fun c -> r.[Char.code c] <- '\001') s;
+      let r = Bytes.make 256 '\000' in
+      iter (fun c -> Bytes.set r (Char.code c) '\001') s;
       r
 
     let fold_case s =
-      let r = make_empty() in
-      iter (fun c -> add r (Char.lowercase c); add r (Char.uppercase c)) s;
-      r
+      (let r = make_empty() in
+       iter (fun c -> add r (Char.lowercase c); add r (Char.uppercase c)) s;
+       r)[@ocaml.warning "-3"]
 
   end
 
@@ -152,16 +163,16 @@ let displ dest from = dest - from - 1
 (* Determine if a regexp can match the empty string *)
 
 let rec is_nullable = function
-    Char c -> false
+    Char _ -> false
   | String s -> s = ""
-  | CharClass(cl, cmpl) -> false
+  | CharClass _ -> false
   | Seq rl -> List.for_all is_nullable rl
   | Alt (r1, r2) -> is_nullable r1 || is_nullable r2
-  | Star r -> true
+  | Star _ -> true
   | Plus r -> is_nullable r
-  | Option r -> true
-  | Group(n, r) -> is_nullable r
-  | Refgroup n -> true
+  | Option _ -> true
+  | Group(_, r) -> is_nullable r
+  | Refgroup _ -> true
   | Bol -> true
   | Eol -> true
   | Wordboundary -> true
@@ -176,11 +187,11 @@ let rec first = function
   | CharClass(cl, cmpl) -> if cmpl then Charset.complement cl else cl
   | Seq rl -> first_seq rl
   | Alt (r1, r2) -> Charset.union (first r1) (first r2)
-  | Star r -> Charset.full
+  | Star _ -> Charset.full
   | Plus r -> first r
-  | Option r -> Charset.full
-  | Group(n, r) -> first r
-  | Refgroup n -> Charset.full
+  | Option _ -> Charset.full
+  | Group(_, r) -> first r
+  | Refgroup _ -> Charset.full
   | Bol -> Charset.full
   | Eol -> Charset.full
   | Wordboundary -> Charset.full
@@ -190,7 +201,7 @@ and first_seq = function
   | (Bol | Eol | Wordboundary) :: rl -> first_seq rl
   | Star r :: rl -> Charset.union (first r) (first_seq rl)
   | Option r :: rl -> Charset.union (first r) (first_seq rl)
-  | r :: rl -> first r
+  | r :: _ -> first r
 
 (* Transform a Char or CharClass regexp into a character class *)
 
@@ -201,14 +212,14 @@ let charclass_of_regexp fold_case re =
     | CharClass(cl, compl) -> (cl, compl)
     | _ -> assert false in
   let cl2 = if fold_case then Charset.fold_case cl1 else cl1 in
-  if compl then Charset.complement cl2 else cl2
+  Bytes.to_string (if compl then Charset.complement cl2 else cl2)
 
 (* The case fold table: maps characters to their lowercase equivalent *)
 
 let fold_case_table =
-  let t = String.create 256 in
-  for i = 0 to 255 do t.[i] <- Char.lowercase(Char.chr i) done;
-  t
+  (let t = Bytes.create 256 in
+   for i = 0 to 255 do Bytes.set t i (Char.lowercase(Char.chr i)) done;
+   Bytes.to_string t)[@ocaml.warning "-3"]
 
 module StringMap =
   Map.Make(struct type t = string let compare (x:t) y = compare x y end)
@@ -237,7 +248,7 @@ let compile fold_case re =
     incr progpos in
   (* Reserve an instruction slot and return its position *)
   let emit_hole () =
-    let p = !progpos in incr progpos; p in
+    let p = !progpos in emit_instr op_CHAR 0; p in
   (* Fill a reserved instruction slot with a GOTO or PUSHBACK instruction *)
   let patch_instr pos opc dest =
     (!prog).(pos) <- (instr opc (displ dest pos)) in
@@ -265,6 +276,7 @@ let compile fold_case re =
     Char c ->
       if fold_case then
         emit_instr op_CHARNORM (Char.code (Char.lowercase c))
+          [@ocaml.warning "-3"]
       else
         emit_instr op_CHAR (Char.code c)
   | String s ->
@@ -273,6 +285,7 @@ let compile fold_case re =
       | 1 ->
         if fold_case then
           emit_instr op_CHARNORM (Char.code (Char.lowercase s.[0]))
+            [@ocaml.warning "-3"]
         else
           emit_instr op_CHAR (Char.code s.[0])
       | _ ->
@@ -286,13 +299,14 @@ let compile fold_case re =
         with Not_found ->
           if fold_case then
             emit_instr op_STRINGNORM (cpool_index (String.lowercase s))
+              [@ocaml.warning "-3"]
           else
             emit_instr op_STRING (cpool_index s)
       end
   | CharClass(cl, compl) ->
       let cl1 = if fold_case then Charset.fold_case cl else cl in
       let cl2 = if compl then Charset.complement cl1 else cl1 in
-      emit_instr op_CHARCLASS (cpool_index cl2)
+      emit_instr op_CHARCLASS (cpool_index (Bytes.to_string cl2))
   | Seq rl ->
       emit_seq_code rl
   | Alt(r1, r2) ->
@@ -367,13 +381,13 @@ let compile fold_case re =
       let lbl = !progpos in
       patch_instr pos_pushback op_PUSHBACK lbl
   | Group(n, r) ->
-      if n >= 32 then failwith "too many \\(...\\) groups";
       emit_instr op_BEGGROUP n;
       emit_code r;
       emit_instr op_ENDGROUP n;
       numgroups := max !numgroups (n+1)
   | Refgroup n ->
-      emit_instr op_REFGROUP n
+      emit_instr op_REFGROUP n;
+      numgroups := max !numgroups (n+1)
   | Bol ->
       emit_instr op_BOL 0
   | Eol ->
@@ -412,7 +426,7 @@ let compile fold_case re =
   let start_pos =
     if start = Charset.full
     then -1
-    else cpool_index (Charset.expand start') in
+    else cpool_index (Bytes.to_string (Charset.expand start')) in
   let constantpool = Array.make !cpoolpos "" in
   StringMap.iter (fun str idx -> constantpool.(idx) <- str) !cpool;
   { prog = Array.sub !prog 0 !progpos;
@@ -506,12 +520,10 @@ let parse s =
           assert false
       | '(' ->
           let group_no = !group_counter in
-          if group_no < 32 then incr group_counter;
+          incr group_counter;
           let (r, j) = regexp0 (i+1) in
           if j + 1 < len && s.[j] = '\\' && s.[j+1] = ')' then
-            if group_no < 32
-            then (Group(group_no, r), j + 2)
-            else (r, j + 2)
+            (Group(group_no, r), j + 2)
           else
             failwith "\\( group not closed by \\)"
       | '1' .. '9' as c ->
@@ -553,16 +565,19 @@ let regexp_case_fold e = compile true (parse e)
 
 let quote s =
   let len = String.length s in
-  let buf = String.create (2 * len) in
+  let buf = Bytes.create (2 * len) in
   let pos = ref 0 in
   for i = 0 to len - 1 do
     match s.[i] with
       '[' | ']' | '*' | '.' | '\\' | '?' | '+' | '^' | '$' as c ->
-        buf.[!pos] <- '\\'; buf.[!pos + 1] <- c; pos := !pos + 2
+        Bytes.set buf !pos '\\';
+        Bytes.set buf (!pos + 1) c;
+        pos := !pos + 2
     | c ->
-        buf.[!pos] <- c; pos := !pos + 1
+        Bytes.set buf !pos c;
+        pos := !pos + 1
   done;
-  String.sub buf 0 !pos
+  Bytes.sub_string buf 0 !pos
 
 let regexp_string s = compile false (String s)
 

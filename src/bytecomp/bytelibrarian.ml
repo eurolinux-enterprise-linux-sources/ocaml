@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Build libraries of .cmo files *)
 
@@ -26,7 +29,7 @@ exception Error of error
 let copy_compunit ic oc compunit =
   seek_in ic compunit.cu_pos;
   compunit.cu_pos <- pos_out oc;
-  compunit.cu_force_link <- !Clflags.link_everything;
+  compunit.cu_force_link <- compunit.cu_force_link || !Clflags.link_everything;
   copy_file_chunk ic oc compunit.cu_codesize;
   if compunit.cu_debug > 0 then begin
     seek_in ic compunit.cu_debug;
@@ -60,7 +63,7 @@ let copy_object_file ppf oc name =
       raise(Error(File_not_found name)) in
   let ic = open_in_bin file_name in
   try
-    let buffer = input_bytes ic (String.length cmo_magic_number) in
+    let buffer = really_input_string ic (String.length cmo_magic_number) in
     if buffer = cmo_magic_number then begin
       let compunit_pos = input_binary_int ic in
       seek_in ic compunit_pos;
@@ -117,3 +120,15 @@ let report_error ppf = function
   | Not_an_object_file name ->
       fprintf ppf "The file %a is not a bytecode object file"
         Location.print_filename name
+
+let () =
+  Location.register_error_of_exn
+    (function
+      | Error err -> Some (Location.error_of_printer_file report_error err)
+      | _ -> None
+    )
+
+let reset () =
+  lib_ccobjs := [];
+  lib_ccopts := [];
+  lib_dllibs := []

@@ -1,20 +1,20 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 2003 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
-
-/* $Id$ */
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 2003 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 #include "bng.h"
-#include "config.h"
+#include "caml/config.h"
 
 #if defined(__GNUC__) && BNG_ASM_LEVEL > 0
 #if defined(BNG_ARCH_ia32)
@@ -23,12 +23,10 @@
 #include "bng_amd64.c"
 #elif defined(BNG_ARCH_ppc)
 #include "bng_ppc.c"
-#elif defined (BNG_ARCH_alpha)
-#include "bng_alpha.c"
 #elif defined (BNG_ARCH_sparc)
 #include "bng_sparc.c"
-#elif defined (BNG_ARCH_mips)
-#include "bng_mips.c"
+#elif defined (BNG_ARCH_arm64)
+#include "bng_arm64.c"
 #endif
 #endif
 

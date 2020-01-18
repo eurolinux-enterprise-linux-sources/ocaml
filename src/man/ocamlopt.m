@@ -1,14 +1,17 @@
-.\"***********************************************************************
-.\"*                                                                     *
-.\"*                                OCaml                                *
-.\"*                                                                     *
-.\"*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *
-.\"*                                                                     *
-.\"*  Copyright 1996 Institut National de Recherche en Informatique et   *
-.\"*  en Automatique.  All rights reserved.  This file is distributed    *
-.\"*  under the terms of the Q Public License version 1.0.               *
-.\"*                                                                     *
-.\"***********************************************************************
+.\"**************************************************************************
+.\"*                                                                        *
+.\"*                                 OCaml                                  *
+.\"*                                                                        *
+.\"*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *
+.\"*                                                                        *
+.\"*   Copyright 1996 Institut National de Recherche en Informatique et     *
+.\"*     en Automatique.                                                    *
+.\"*                                                                        *
+.\"*   All rights reserved.  This file is distributed under the terms of    *
+.\"*   the GNU Lesser General Public License version 2.1, with the          *
+.\"*   special exception on linking described in the file LICENSE.          *
+.\"*                                                                        *
+.\"**************************************************************************
 .\"
 .TH OCAMLOPT 1
 
@@ -41,7 +44,7 @@ command has a command-line interface very close to that
 of
 .BR ocamlc (1).
 It accepts the same types of arguments and processes them
-sequentially:
+sequentially, after all options have been processed:
 
 Arguments ending in .mli are taken to be source files for
 compilation unit interfaces. Interfaces specify the names exported by
@@ -153,7 +156,12 @@ linking with this library automatically adds back the
 options as if they had been provided on the
 command line, unless the
 .B \-noautolink
-option is given.
+option is given. Additionally, a substring
+.B $CAMLORIGIN
+inside a
+.BR \ \-ccopt
+options will be replaced by the full path to the .cma library,
+excluding the filename.
 .TP
 .B \-absname
 Show absolute filenames in error messages.
@@ -210,6 +218,30 @@ causes the C linker to search for C libraries in
 directory
 .IR dir .
 .TP
+.BI \-color \ mode
+Enable or disable colors in compiler messages (especially warnings and errors).
+The following modes are supported:
+
+.B auto
+use heuristics to enable colors only if the output supports them (an
+ANSI-compatible tty terminal);
+
+.B always
+enable colors unconditionally;
+
+.B never
+disable color output.
+
+The default setting is
+.B auto,
+and the current heuristic
+checks that the "TERM" environment variable exists and is
+not empty or "dumb", and that isatty(stderr) holds.
+
+The environment variable "OCAML_COLOR" is considered if \-color is not
+provided. Its values are auto/always/never as above.
+
+.TP
 .B \-compact
 Optimize the produced code for space rather than for time. This
 results in smaller but slightly slower programs. The default is to
@@ -260,9 +292,9 @@ If the given directory starts with
 .BR + ,
 it is taken relative to the
 standard library directory. For instance,
-.B \-I\ +labltk
+.B \-I\ +compiler-libs
 adds the subdirectory
-.B labltk
+.B compiler-libs
 of the standard library to the search path.
 .TP
 .BI \-impl \ filename
@@ -298,6 +330,12 @@ Recognize file names ending with
 .I string
 as interface files (instead of the default .mli).
 .TP
+.B \-keep-locs
+Keep documentation strings in generated .cmi files.
+.TP
+.B \-keep-locs
+Keep locations in generated .cmi files.
+.TP
 .B \-labels
 Labels are not ignored in types, labels may be used in applications,
 and labelled parameters can be given in any order.  This is the default.
@@ -312,6 +350,15 @@ flag), setting the
 flag forces all
 subsequent links of programs involving that library to link all the
 modules contained in the library.
+When compiling a module (option
+.BR \-c ),
+setting the
+.B \-linkall
+option ensures that this module will
+always be linked if it is put in a library and this library is linked.
+.TP
+.B \-no-alias-deps
+Do not record dependencies for module aliases.
 .TP
 .B \-no\-app\-funct
 Deactivates the applicative behaviour of functors. With this option,
@@ -361,6 +408,25 @@ If the
 option is given, specify the name of the output file produced. If the
 .B \-shared
 option is given, specify the name of plugin file produced.
+This can also be used when compiling an interface or implementation
+file, without linking, in which case it sets the name of the cmi or
+cmo file, and also sets the module name to the file name up to the
+first dot.
+.TP
+.B \-opaque
+When compiling a .mli interface file, this has the same effect as the
+.B \-opaque
+option of the bytecode compiler. When compiling a .ml implementation
+file, this produces a .cmx file without cross-module optimization
+information, which reduces recompilation on module change.
+.TP
+.BI \-open \ module
+Opens the given module before processing the interface or
+implementation files. If several
+.B \-open
+options are given, they are processed in order, just as if
+the statements open! module1;; ... open! moduleN;; were added
+at the top of each file.
 .TP
 .B \-output\-obj
 Cause the linker to produce a C object file instead of an executable
@@ -427,6 +493,15 @@ See
 .IR "The OCaml user's manual" ,
 chapter "Native-code compilation" for more details.
 .TP
+.BI \-plugin \ plugin
+Dynamically load the code of the given
+.I plugin
+(a .cmo, .cma or .cmxs file) in the compiler. The plugin must exist in
+the same kind of code as the compiler (ocamlopt.byte must load bytecode
+plugins, while ocamlopt.opt must load native code plugins), and
+extension adaptation is done automatically for .cma files (to .cmxs files
+if the compiler is compiled in native code).
+.TP
 .BI \-pp \ command
 Cause the compiler to call the given
 .I command
@@ -439,8 +514,9 @@ errors, the intermediate file is deleted afterwards.
 .BI \-ppx \ command
 After parsing, pipe the abstract syntax tree through the preprocessor
 .IR command .
-The format of the input and ouput of the preprocessor
-are not yet documented.
+The module
+.BR Ast_mapper (3)
+implements the external interface of a preprocessor.
 .TP
 .B \-principal
 Check information path during type-checking, to make sure that all
@@ -471,6 +547,12 @@ code for the source file
 .IR x .ml
 is saved in the file
 .IR x .s.
+.TP
+.B \-safe\-string
+Enforce the separation between types
+.BR string \ and\  bytes ,
+thereby making strings read-only. This will become the default in
+a future version of OCaml.
 .TP
 .B \-shared
 Build a plugin (usually .cmxs) that can be dynamically loaded with
@@ -503,6 +585,17 @@ Compile or link multithreaded programs, in combination with the
 system threads library described in
 .IR "The OCaml user's manual" .
 .TP
+.B \-unboxed\-types
+When a type is unboxable (i.e. a record with a single argument or a
+concrete datatype with a single constructor of one argument) it will
+be unboxed unless annotated with
+.BR [@@ocaml.boxed] .
+.TP
+.B \-no-unboxed\-types
+When a type is unboxable  it will be boxed unless annotated with
+.BR [@@ocaml.unboxed] .
+This is the default.
+.TP
 .B \-unsafe
 Turn bound checking off for array and string accesses (the
 .BR v.(i) and s.[i]
@@ -518,6 +611,13 @@ an integer division (or modulus) by zero can halt the
 program or continue with an unspecified result instead of raising a
 .B Division_by_zero
 exception.
+.TP
+.B \-unsafe\-string
+Identify the types
+.BR string \ and\  bytes ,
+thereby making strings writable. For reasons of backward compatibility,
+this is the default setting for the moment, but this will change in a future
+version of OCaml.
 .TP
 .B \-v
 Print the version number of the compiler and the location of the
@@ -560,10 +660,11 @@ Note: it is not recommended to use the
 .B \-warn\-error
 option in production code, because it will almost certainly prevent
 compiling your program with later versions of OCaml when they add new
-warnings.
+warnings or modify existing warnings.
 
 The default setting is
-.B \-warn\-error\ -a (all warnings are non-fatal).
+.B \-warn\-error \-a+31
+(only warning 31 is fatal).
 .TP
 .B \-warn\-help
 Show the description of all available warning numbers.
@@ -627,6 +728,37 @@ Generate SPARC version 9 code.
 .P
 The default is to generate code for SPARC version 7, which runs on all
 SPARC processors.
+
+.SH OPTIONS FOR THE ARM ARCHITECTURE
+The ARM code generator supports the following additional options:
+.TP
+.B \-farch=armv4|armv5|armv5te|armv6|armv6t2|armv7
+Select the ARM target architecture
+.TP
+.B \-ffpu=soft|vfpv2|vfpv3\-d16|vfpv3
+Select the floating-point hardware
+.TP
+.B \-fPIC
+Generate position-independent machine code.
+.TP
+.B \-fno\-PIC
+Generate position-dependent machine code.  This is the default.
+.TP
+.B \-fthumb
+Enable Thumb/Thumb-2 code generation
+.TP
+.B \-fno\-thumb
+Disable Thumb/Thumb-2 code generation
+.P
+The default values for target architecture, floating-point hardware
+and thumb usage were selected at configure-time when building
+.B ocamlopt
+itself. This configuration can be inspected using
+.BR ocamlopt\ \-config .
+Target architecture depends on the "model" setting, while
+floating-point hardware and thumb support are determined from the ABI
+setting in "system" (
+.BR linux_eabi or linux_eabihf ).
 
 .SH SEE ALSO
 .BR ocamlc (1).

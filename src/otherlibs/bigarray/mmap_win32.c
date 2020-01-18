@@ -1,25 +1,27 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*         Manuel Serrano and Xavier Leroy, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 2000 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*          Manuel Serrano and Xavier Leroy, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 2000 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include "bigarray.h"
-#include "alloc.h"
-#include "custom.h"
-#include "fail.h"
-#include "mlvalues.h"
-#include "sys.h"
+#include "caml/alloc.h"
+#include "caml/custom.h"
+#include "caml/fail.h"
+#include "caml/mlvalues.h"
+#include "caml/sys.h"
 #include "unixsupport.h"
 
 extern int caml_ba_element_size[];  /* from bigarray_stubs.c */
@@ -56,7 +58,7 @@ CAMLprim value caml_ba_map_file(value vfd, value vkind, value vlayout,
   SYSTEM_INFO sysinfo;
 
   fd = Handle_val(vfd);
-  flags = Int_val(vkind) | Int_val(vlayout);
+  flags = Caml_ba_kind_val(vkind) | Caml_ba_layout_val(vlayout);
   startpos = Int64_val(vstart);
   num_dims = Wosize_val(vdim);
   major_dim = flags & CAML_BA_FORTRAN_LAYOUT ? num_dims - 1 : 0;

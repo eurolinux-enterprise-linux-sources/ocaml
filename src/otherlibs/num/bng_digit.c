@@ -1,17 +1,17 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 2003 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
-
-/* $Id$ */
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 2003 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 /**** Generic operations on digits ****/
 
@@ -98,6 +98,13 @@
 #ifndef BngMult
 /* resl = low  digit of product arg1 * arg2
    resh = high digit of product arg1 * arg2. */
+#if SIZEOF_PTR == 4 && defined(ARCH_UINT64_TYPE)
+#define BngMult(resh,resl,arg1,arg2) {                                      \
+  ARCH_UINT64_TYPE p = (ARCH_UINT64_TYPE)(arg1) * (ARCH_UINT64_TYPE)(arg2); \
+  resh = p >> 32;                                                           \
+  resl = p;                                                                 \
+}
+#else
 #define BngMult(resh,resl,arg1,arg2) {                                      \
   bngdigit p11 = BngLowHalf(arg1) * BngLowHalf(arg2);                       \
   bngdigit p12 = BngLowHalf(arg1) * BngHighHalf(arg2);                      \
@@ -108,6 +115,7 @@
   BngAdd3(resl, resh,                                                       \
      p11, p12 << BNG_BITS_PER_HALF_DIGIT, p21 << BNG_BITS_PER_HALF_DIGIT);  \
 }
+#endif
 #endif
 
 #ifndef BngDiv

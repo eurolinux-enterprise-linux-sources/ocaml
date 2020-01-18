@@ -1,15 +1,19 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../LICENSE.     */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
+
+#define CAML_INTERNALS
 
 /* Trace the instructions executed */
 
@@ -19,20 +23,20 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "instruct.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "opnames.h"
-#include "prims.h"
-#include "stacks.h"
+#include "caml/instrtrace.h"
+#include "caml/instruct.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/opnames.h"
+#include "caml/prims.h"
+#include "caml/stacks.h"
+#include "caml/startup_aux.h"
 
 extern code_t caml_start_code;
 
 intnat caml_icount = 0;
 
 void caml_stop_here () {}
-
-int caml_trace_flag = 0;
 
 void caml_disasm_instr(pc)
      code_t pc;
@@ -84,7 +88,7 @@ char * caml_instr_string (code_t pc)
   char *nam;
 
   nam = (instr < 0 || instr > STOP)
-    ? (sprintf (nambuf, "???%d", instr), nambuf)
+    ? (snprintf (nambuf, sizeof(nambuf), "???%d", instr), nambuf)
     : names_of_instructions[instr];
   pc++;
   switch (instr) {
@@ -125,7 +129,7 @@ char * caml_instr_string (code_t pc)
   case OFFSETREF:
   case OFFSETCLOSURE:
   case PUSHOFFSETCLOSURE:
-    sprintf(buf, "%s %d", nam, pc[0]);
+    snprintf(buf, sizeof(buf), "%s %d", nam, pc[0]);
     break;
     /* Instructions with two operands */
   case APPTERM:
@@ -142,16 +146,16 @@ char * caml_instr_string (code_t pc)
   case BGEINT:
   case BULTINT:
   case BUGEINT:
-    sprintf(buf, "%s %d, %d", nam, pc[0], pc[1]);
+    snprintf(buf, sizeof(buf), "%s %d, %d", nam, pc[0], pc[1]);
     break;
   case SWITCH:
-    sprintf(buf, "SWITCH sz%#lx=%ld::ntag%ld nint%ld",
+    snprintf(buf, sizeof(buf), "SWITCH sz%#lx=%ld::ntag%ld nint%ld",
             (long) pc[0], (long) pc[0], (unsigned long) pc[0] >> 16,
             (unsigned long) pc[0] & 0xffff);
     break;
     /* Instructions with a C primitive as operand */
   case C_CALLN:
-    sprintf(buf, "%s %d,", nam, pc[0]);
+    snprintf(buf, sizeof(buf), "%s %d,", nam, pc[0]);
     pc++;
     /* fallthrough */
   case C_CALL1:
@@ -160,12 +164,13 @@ char * caml_instr_string (code_t pc)
   case C_CALL4:
   case C_CALL5:
     if (pc[0] < 0 || pc[0] >= caml_prim_name_table.size)
-      sprintf(buf, "%s unknown primitive %d", nam, pc[0]);
+      snprintf(buf, sizeof(buf), "%s unknown primitive %d", nam, pc[0]);
     else
-      sprintf(buf, "%s %s", nam, (char *) caml_prim_name_table.contents[pc[0]]);
+      snprintf(buf, sizeof(buf), "%s %s",
+               nam, (char *) caml_prim_name_table.contents[pc[0]]);
     break;
   default:
-    sprintf(buf, "%s", nam);
+    snprintf(buf, sizeof(buf), "%s", nam);
     break;
   };
   return buf;
@@ -182,25 +187,26 @@ caml_trace_value_file (value v, code_t prog, int proglen, FILE * f)
   if (prog && v % sizeof (int) == 0
            && (code_t) v >= prog
            && (code_t) v < (code_t) ((char *) prog + proglen))
-    fprintf (f, "=code@%ld", (code_t) v - prog);
+    fprintf (f, "=code@%ld", (long) ((code_t) v - prog));
   else if (Is_long (v))
     fprintf (f, "=long%" ARCH_INTNAT_PRINTF_FORMAT "d", Long_val (v));
   else if ((void*)v >= (void*)caml_stack_low
            && (void*)v < (void*)caml_stack_high)
-    fprintf (f, "=stack_%ld", (intnat*)caml_stack_high - (intnat*)v);
+    fprintf (f, "=stack_%ld", (long) ((intnat*)caml_stack_high - (intnat*)v));
   else if (Is_block (v)) {
     int s = Wosize_val (v);
     int tg = Tag_val (v);
     int l = 0;
     switch (tg) {
     case Closure_tag:
-      fprintf (f, "=closure[s%d,cod%ld]", s, (code_t) (Code_val (v)) - prog);
+      fprintf (f, "=closure[s%d,cod%ld]",
+               s, (long) ((code_t) (Code_val (v)) - prog));
       goto displayfields;
     case String_tag:
       l = caml_string_length (v);
       fprintf (f, "=string[s%dL%d]'", s, l);
       for (i = 0; i < ((l>0x1f)?0x1f:l) ; i++) {
-        if (isprint (Byte (v, i)))
+        if (isprint ((int) Byte (v, i)))
           putc (Byte (v, i), f);
         else
           putc ('?', f);
@@ -250,10 +256,10 @@ caml_trace_accu_sp_file (value accu, value * sp, code_t prog, int proglen,
   fprintf (f, "accu=");
   caml_trace_value_file (accu, prog, proglen, f);
   fprintf (f, "\n sp=%#" ARCH_INTNAT_PRINTF_FORMAT "x @%ld:",
-           (intnat) sp, caml_stack_high - sp);
-  for (p = sp, i = 0; i < 12 + (1 << caml_trace_flag) && p < caml_stack_high;
+           (intnat) sp, (long) (caml_stack_high - sp));
+  for (p = sp, i = 0; i < 12 + (1 << caml_trace_level) && p < caml_stack_high;
        p++, i++) {
-    fprintf (f, "\n[%ld] ", caml_stack_high - p);
+    fprintf (f, "\n[%ld] ", (long) (caml_stack_high - p));
     caml_trace_value_file (*p, prog, proglen, f);
   };
   putc ('\n', f);

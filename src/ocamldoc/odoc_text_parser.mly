@@ -1,19 +1,21 @@
 %{
-(***********************************************************************)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Odoc_types
 
-let identchar =
-  "[A-Z a-z_\192-\214\216-\246\248-\255'0-9]"
 let blank = "[ \010\013\009\012]"
 
 let remove_beginning_blanks s =
@@ -52,6 +54,7 @@ let print_DEBUG s = print_string s; print_newline ()
 %token ELE_REF
 %token VAL_REF
 %token TYP_REF
+%token EXT_REF
 %token EXC_REF
 %token MOD_REF
 %token MODT_REF
@@ -113,6 +116,7 @@ ele_ref_kind:
   ELE_REF { None }
 | VAL_REF { Some RK_value }
 | TYP_REF { Some RK_type }
+| EXT_REF { Some RK_extension }
 | EXC_REF { Some RK_exception }
 | MOD_REF { Some RK_module }
 | MODT_REF { Some RK_module_type }
@@ -171,7 +175,7 @@ text_element:
 ;
 
 list:
-| string { [] (* A VOIR : un test pour voir qu'il n'y a que des blancs *) }
+| string { [] (* TODO: a test to check that there is only space characters *) }
 | string list { $2 }
 | list string  { $1 }
 | item { [ $1 ] }

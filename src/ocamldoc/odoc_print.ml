@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Format
 
@@ -25,13 +28,9 @@ let new_fmt () =
 
 let (type_fmt, flush_type_fmt) = new_fmt ()
 let _ =
-  let (out, flush, outnewline, outspace) =
-    pp_get_all_formatter_output_functions type_fmt ()
-  in
-  pp_set_all_formatter_output_functions type_fmt
-    ~out ~flush
-    ~newline: (fun () -> out "\n  " 0 3)
-    ~spaces: outspace
+  let outfuns = pp_get_formatter_out_functions type_fmt () in
+  pp_set_formatter_out_functions type_fmt
+    {outfuns with out_newline = fun () -> outfuns.out_string "\n  " 0 3}
 
 let (modtype_fmt, flush_modtype_fmt) = new_fmt ()
 
@@ -54,7 +53,8 @@ exception Use_code of string
 let simpl_module_type ?code t =
   let rec iter t =
     match t with
-      Types.Mty_ident p -> t
+      Types.Mty_ident _
+    | Types.Mty_alias(_, _) -> t
     | Types.Mty_signature _ ->
         (
          match code with
@@ -62,7 +62,7 @@ let simpl_module_type ?code t =
          | Some s -> raise (Use_code s)
         )
     | Types.Mty_functor (id, mt1, mt2) ->
-        Types.Mty_functor (id, iter mt1, iter mt2)
+        Types.Mty_functor (id, Misc.may_map iter mt1, iter mt2)
   in
   iter t
 
@@ -79,25 +79,25 @@ let string_of_module_type ?code ?(complete=false) t =
 let simpl_class_type t =
   let rec iter t =
     match t with
-      Types.Cty_constr (p,texp_list,ct) -> t
+      Types.Cty_constr _ -> t
     | Types.Cty_signature cs ->
-        (* on vire les vals et methods pour ne pas qu'elles soient imprimees
-           quand on affichera le type *)
+        (* we delete vals and methods in order to not print them when
+           displaying the type *)
         let tnil = { Types.desc = Types.Tnil ; Types.level = 0; Types.id = 0 } in
-        Types.Cty_signature { Types.cty_self = { cs.Types.cty_self with
+        Types.Cty_signature { Types.csig_self = { cs.Types.csig_self with
                                                   Types.desc = Types.Tobject (tnil, ref None) };
-                               Types.cty_vars = Types.Vars.empty ;
-                               Types.cty_concr = Types.Concr.empty ;
-                               Types.cty_inher = []
+                              csig_vars = Types.Vars.empty ;
+                              csig_concr = Types.Concr.empty ;
+                              csig_inher = []
                              }
-    | Types.Cty_fun (l, texp, ct) ->
+    | Types.Cty_arrow (l, texp, ct) ->
         let new_ct = iter ct in
-        Types.Cty_fun (l, texp, new_ct)
+        Types.Cty_arrow (l, texp, new_ct)
   in
   iter t
 
 let string_of_class_type ?(complete=false) t =
   let t2 = if complete then t else simpl_class_type t in
-  (* A VOIR : ma propre version de Printtyp.class_type pour ne pas faire reset_names *)
+  (* FIXME : my own Printtyp.class_type variant to avoid reset_names *)
   Printtyp.class_type modtype_fmt t2;
   flush_modtype_fmt ()

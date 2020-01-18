@@ -1,40 +1,89 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Luc Maranget, projet Moscova, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2000 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Luc Maranget, projet Moscova, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2000 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
-(* Store for actions in object style *)
-exception Found of int
+
+type 'a shared = Shared of 'a | Single of 'a
 
 type 'a t_store =
-    {act_get : unit -> 'a array ; act_store : 'a -> int}
+    {act_get : unit -> 'a array ;
+     act_get_shared : unit -> 'a shared array ;
+     act_store : 'a -> int ;
+     act_store_shared : 'a -> int ; }
 
-let mk_store same =
-  let r_acts = ref [] in
-  let store act =
-    let rec store_rec i = function
-      | [] -> i,[act]
-      | act0::rem ->
-          if same act0 act then raise (Found i)
-          else
-            let i,rem = store_rec (i+1) rem in
-            i,act0::rem in
-    try
-      let i,acts = store_rec 0 !r_acts in
-      r_acts := acts ;
-      i
-    with
-    | Found i -> i
+exception Not_simple
 
-  and get () = Array.of_list !r_acts in
-  {act_store=store ; act_get=get}
+module type Stored = sig
+  type t
+  type key
+  val make_key : t -> key option
+end
+
+module Store(A:Stored) = struct
+  module AMap =
+    Map.Make(struct type t = A.key let compare = Pervasives.compare end)
+
+  type intern =
+      { mutable map : (bool * int)  AMap.t ;
+        mutable next : int ;
+        mutable acts : (bool * A.t) list; }
+
+  let mk_store () =
+    let st =
+      { map = AMap.empty ;
+        next = 0 ;
+        acts = [] ; } in
+
+    let add mustshare act =
+      let i = st.next in
+      st.acts <- (mustshare,act) :: st.acts ;
+      st.next <- i+1 ;
+      i in
+
+    let store mustshare act = match A.make_key act with
+    | Some key ->
+        begin try
+          let (shared,i) = AMap.find key st.map in
+          if not shared then st.map <- AMap.add key (true,i) st.map ;
+          i
+        with Not_found ->
+          let i = add mustshare act in
+          st.map <- AMap.add key (mustshare,i) st.map ;
+          i
+        end
+    | None ->
+        add mustshare act
+
+    and get () = Array.of_list (List.rev_map (fun (_,act) -> act) st.acts)
+
+    and get_shared () =
+      let acts =
+        Array.of_list
+          (List.rev_map
+             (fun (shared,act) ->
+               if shared then Shared act else Single act)
+             st.acts) in
+      AMap.iter
+        (fun _ (shared,i) ->
+          if shared then match acts.(i) with
+          | Single act -> acts.(i) <- Shared act
+          | Shared _ -> ())
+        st.map ;
+      acts in
+    {act_store = store false ; act_store_shared = store true ;
+     act_get = get; act_get_shared = get_shared; }
+end
 
 
 
@@ -50,13 +99,15 @@ module type S =
    type act
 
    val bind : act -> (act -> act) -> act
+   val make_const : int -> act
    val make_offset : act -> int -> act
    val make_prim : primitive -> act list -> act
    val make_isout : act -> act -> act
    val make_isin : act -> act -> act
    val make_if : act -> act -> act -> act
-   val make_switch :
-      act -> int array -> act array -> act
+   val make_switch : act -> int array -> act array -> act
+   val make_catch : act -> int * (act -> act)
+   val make_exit : int -> act
  end
 
 (* The module will ``produce good code for the case statement'' *)
@@ -91,6 +142,7 @@ type 'a t_ctx =  {off : int ; arg : 'a}
 let cut = ref 8
 and more_cut = ref 16
 
+(*
 let pint chan i =
   if i = min_int then Printf.fprintf chan "-oo"
   else if i=max_int then Printf.fprintf chan "oo"
@@ -105,8 +157,9 @@ let pcases chan cases =
       Printf.fprintf chan "%a..%a:%d " pint l pint h act
   done
 
-    let prerr_inter i = Printf.fprintf stderr
+let prerr_inter i = Printf.fprintf stderr
         "cases=%a" pcases i.cases
+*)
 
 let get_act cases i =
   let _,_,r = cases.(i) in
@@ -122,6 +175,7 @@ type ctests = {
 
 let too_much = {n=max_int ; ni=max_int}
 
+(*
 let ptests chan {n=n ; ni=ni} =
   Printf.fprintf chan "{n=%d ; ni=%d}" n ni
 
@@ -129,23 +183,7 @@ let pta chan t =
   for i =0 to Array.length t-1 do
     Printf.fprintf chan "%d: %a\n" i ptests t.(i)
   done
-
-let count_tests s =
-  let r =
-    Array.init
-      (Array.length s.actions)
-      (fun _ -> {n=0 ; ni=0 }) in
-  let c = s.cases in
-  let imax = Array.length c-1 in
-  for i=0 to imax do
-    let l,h,act = c.(i) in
-    let x = r.(act) in
-    x.n <- x.n+1 ;
-    if l < h && i<> 0 && i<>imax then
-      x.ni <- x.ni+1 ;
-  done ;
-  r
-
+*)
 
 let less_tests c1 c2 =
   if c1.n < c2.n then
@@ -160,8 +198,6 @@ let less_tests c1 c2 =
 
 and eq_tests c1 c2 = c1.n = c2.n && c1.ni=c2.ni
 
-let min_tests c1 c2 = if less_tests c1 c2 then c1 else c2
-
 let less2tests (c1,d1) (c2,d2) =
   if eq_tests c1 c2 then
     less_tests d1 d2
@@ -174,10 +210,12 @@ let add_test t1 t2 =
 
 type t_ret = Inter of int * int  | Sep of int | No
 
+(*
 let pret chan = function
   | Inter (i,j)-> Printf.fprintf chan "Inter %d %d" i j
   | Sep i -> Printf.fprintf chan "Sep %d" i
   | No -> Printf.fprintf chan "No"
+*)
 
 let coupe cases i =
   let l,_,_ = cases.(i) in
@@ -196,7 +234,7 @@ let case_append c1 c2 =
       let l1,h1,act1 = c1.(Array.length c1-1)
       and l2,h2,act2 = c2.(0) in
       if act1 = act2 then
-        let r = Array.create (len1+len2-1) c1.(0) in
+        let r = Array.make (len1+len2-1) c1.(0) in
         for i = 0 to len1-2 do
           r.(i) <- c1.(i)
         done ;
@@ -225,7 +263,7 @@ let case_append c1 c2 =
         done ;
         r
       else if h1 > l1 then
-        let r = Array.create (len1+len2) c1.(0) in
+        let r = Array.make (len1+len2) c1.(0) in
         for i = 0 to len1-2 do
           r.(i) <- c1.(i)
         done ;
@@ -235,7 +273,7 @@ let case_append c1 c2 =
         done ;
         r
       else if h2 > l2 then
-        let r = Array.create (len1+len2) c1.(0) in
+        let r = Array.make (len1+len2) c1.(0) in
         for i = 0 to len1-1 do
           r.(i) <- c1.(i)
         done ;
@@ -258,6 +296,7 @@ let coupe_inter i j cases =
 
 type kind = Kvalue of int | Kinter of int | Kempty
 
+(*
 let pkind chan = function
   | Kvalue i ->Printf.fprintf chan "V%d" i
   | Kinter i -> Printf.fprintf chan "I%d" i
@@ -268,6 +307,7 @@ let rec pkey chan  = function
   | [k] -> pkind chan k
   | k::rem ->
       Printf.fprintf chan "%a %a" pkey rem pkind k
+*)
 
 let t = Hashtbl.create 17
 
@@ -338,8 +378,7 @@ let ok_inter = ref false
 let rec opt_count top cases =
   let key = make_key cases in
   try
-    let r = Hashtbl.find t key in
-    r
+    Hashtbl.find t key
   with
   | Not_found ->
       let r =
@@ -351,13 +390,13 @@ let rec opt_count top cases =
             if lcases < !cut then
               enum top cases
             else if lcases < !more_cut then
-              heuristic top cases
+              heuristic cases
             else
-              divide top cases in
+              divide cases in
       Hashtbl.add t key r ;
       r
 
-and divide top cases =
+and divide cases =
   let lcases = Array.length cases in
   let m = lcases/2 in
   let _,left,right = coupe cases m in
@@ -373,10 +412,10 @@ and divide top cases =
     add_test cm cml ;
   Sep m,(cm, ci)
 
-and heuristic top cases =
+and heuristic cases =
   let lcases = Array.length cases in
 
-  let sep,csep = divide false cases
+  let sep,csep = divide cases
 
   and inter,cinter =
     if !ok_inter then begin
@@ -489,80 +528,68 @@ and enum top cases =
   end ;
   !r, !rc
 
-    let make_if_test konst test arg i ifso ifnot =
+    let make_if_test test arg i ifso ifnot =
       Arg.make_if
-        (Arg.make_prim test [arg ; konst i])
+        (Arg.make_prim test [arg ; Arg.make_const i])
         ifso ifnot
 
-    let make_if_lt konst arg i  ifso ifnot = match i with
+    let make_if_lt arg i  ifso ifnot = match i with
     | 1 ->
-        make_if_test konst Arg.leint arg 0 ifso ifnot
+        make_if_test Arg.leint arg 0 ifso ifnot
     | _ ->
-        make_if_test konst Arg.ltint arg i ifso ifnot
+        make_if_test Arg.ltint arg i ifso ifnot
 
-    and make_if_le konst arg i ifso ifnot = match i with
-    | -1 ->
-        make_if_test konst Arg.ltint arg 0 ifso ifnot
-    | _ ->
-        make_if_test konst Arg.leint arg i ifso ifnot
-
-    and make_if_gt konst arg i  ifso ifnot = match i with
-    | -1 ->
-        make_if_test konst Arg.geint arg 0 ifso ifnot
-    | _ ->
-        make_if_test konst Arg.gtint arg i ifso ifnot
-
-    and make_if_ge konst arg i  ifso ifnot = match i with
+    and make_if_ge arg i  ifso ifnot = match i with
     | 1 ->
-        make_if_test konst Arg.gtint arg 0 ifso ifnot
+        make_if_test Arg.gtint arg 0 ifso ifnot
     | _ ->
-        make_if_test konst Arg.geint arg i ifso ifnot
+        make_if_test Arg.geint arg i ifso ifnot
 
-    and make_if_eq  konst arg i ifso ifnot =
-      make_if_test konst Arg.eqint arg i ifso ifnot
+    and make_if_eq  arg i ifso ifnot =
+      make_if_test Arg.eqint arg i ifso ifnot
 
-    and make_if_ne  konst arg i ifso ifnot =
-      make_if_test konst Arg.neint arg i ifso ifnot
+    and make_if_ne  arg i ifso ifnot =
+      make_if_test Arg.neint arg i ifso ifnot
 
     let do_make_if_out h arg ifso ifno =
       Arg.make_if (Arg.make_isout h arg) ifso ifno
 
-    let make_if_out konst ctx l d mk_ifso mk_ifno = match l with
+    let make_if_out ctx l d mk_ifso mk_ifno = match l with
     | 0 ->
         do_make_if_out
-          (konst d) ctx.arg (mk_ifso ctx) (mk_ifno ctx)
+          (Arg.make_const d) ctx.arg (mk_ifso ctx) (mk_ifno ctx)
     | _ ->
         Arg.bind
           (Arg.make_offset ctx.arg (-l))
           (fun arg ->
             let ctx = {off= (-l+ctx.off) ; arg=arg} in
             do_make_if_out
-              (konst d) arg (mk_ifso ctx) (mk_ifno ctx))
+              (Arg.make_const d) arg (mk_ifso ctx) (mk_ifno ctx))
 
     let do_make_if_in h arg ifso ifno =
       Arg.make_if (Arg.make_isin h arg) ifso ifno
 
-    let make_if_in konst ctx l d mk_ifso mk_ifno = match l with
+    let make_if_in ctx l d mk_ifso mk_ifno = match l with
     | 0 ->
         do_make_if_in
-          (konst d) ctx.arg (mk_ifso ctx) (mk_ifno ctx)
+          (Arg.make_const d) ctx.arg (mk_ifso ctx) (mk_ifno ctx)
     | _ ->
         Arg.bind
           (Arg.make_offset ctx.arg (-l))
           (fun arg ->
             let ctx = {off= (-l+ctx.off) ; arg=arg} in
             do_make_if_in
-              (konst d) arg (mk_ifso ctx) (mk_ifno ctx))
+              (Arg.make_const d) arg (mk_ifso ctx) (mk_ifno ctx))
 
-
-    let rec c_test konst ctx ({cases=cases ; actions=actions} as s) =
+    let rec c_test ctx ({cases=cases ; actions=actions} as s) =
       let lcases = Array.length cases in
       assert(lcases > 0) ;
       if lcases = 1 then
         actions.(get_act cases 0) ctx
+
       else begin
 
-        let w,c = opt_count false cases in
+        let w,_c = opt_count false cases in
 (*
   Printf.fprintf stderr
   "off=%d tactic=%a for %a\n"
@@ -579,31 +606,31 @@ and enum top cases =
         if low=high then begin
           if less_tests coutside cinside then
             make_if_eq
-              konst ctx.arg
+              ctx.arg
               (low+ctx.off)
-              (c_test konst ctx {s with cases=inside})
-              (c_test konst ctx {s with cases=outside})
+              (c_test ctx {s with cases=inside})
+              (c_test ctx {s with cases=outside})
           else
             make_if_ne
-              konst ctx.arg
+              ctx.arg
               (low+ctx.off)
-              (c_test konst ctx {s with cases=outside})
-              (c_test konst ctx {s with cases=inside})
+              (c_test ctx {s with cases=outside})
+              (c_test ctx {s with cases=inside})
         end else begin
           if less_tests coutside cinside then
             make_if_in
-              konst ctx
+              ctx
               (low+ctx.off)
               (high-low)
-              (fun ctx -> c_test konst ctx {s with cases=inside})
-              (fun ctx -> c_test konst ctx {s with cases=outside})
+              (fun ctx -> c_test ctx {s with cases=inside})
+              (fun ctx -> c_test ctx {s with cases=outside})
           else
             make_if_out
-              konst ctx
+              ctx
               (low+ctx.off)
               (high-low)
-              (fun ctx -> c_test konst ctx {s with cases=outside})
-              (fun ctx -> c_test konst ctx {s with cases=inside})
+              (fun ctx -> c_test ctx {s with cases=outside})
+              (fun ctx -> c_test ctx {s with cases=inside})
         end
     | Sep i ->
         let lim,left,right = coupe cases i in
@@ -613,17 +640,17 @@ and enum top cases =
         and right = {s with cases=right} in
 
         if i=1 && (lim+ctx.off)=1 && get_low cases 0+ctx.off=0 then
-          make_if_ne konst
+          make_if_ne
             ctx.arg 0
-            (c_test konst ctx right) (c_test konst ctx left)
+            (c_test ctx right) (c_test ctx left)
         else if less_tests cright cleft then
-          make_if_lt konst
+          make_if_lt
             ctx.arg (lim+ctx.off)
-            (c_test konst ctx left) (c_test konst ctx right)
+            (c_test ctx left) (c_test ctx right)
         else
-          make_if_ge konst
+          make_if_ge
              ctx.arg (lim+ctx.off)
-            (c_test konst ctx right) (c_test konst ctx left)
+            (c_test ctx right) (c_test ctx left)
 
   end
 
@@ -637,13 +664,13 @@ let switch_min = ref 3
 (* Particular case 0, 1, 2 *)
 let particular_case cases i j =
   j-i = 2 &&
-  (let l1,h1,act1 = cases.(i)
-  and  l2,h2,act2 = cases.(i+1)
+  (let l1,_h1,act1 = cases.(i)
+  and  l2,_h2,_act2 = cases.(i+1)
   and  l3,h3,act3 = cases.(i+2) in
   l1+1=l2 && l2+1=l3 && l3=h3 &&
   act1 <> act3)
 
-let approx_count cases i j n_actions =
+let approx_count cases i j =
   let l = j-i+1 in
   if l < !cut then
      let _,(_,{n=ntests}) = opt_count false (Array.sub cases i l) in
@@ -653,12 +680,12 @@ let approx_count cases i j n_actions =
 
 (* Sends back a boolean that says whether is switch is worth or not *)
 
-let dense {cases=cases ; actions=actions} i j =
+let dense {cases} i j =
   if i=j then true
   else
     let l,_,_ = cases.(i)
     and _,h,_ = cases.(j) in
-    let ntests =  approx_count cases i j (Array.length actions) in
+    let ntests =  approx_count cases i j in
 (*
   (ntests+1) >= theta * (h-l+1)
 *)
@@ -674,10 +701,10 @@ let dense {cases=cases ; actions=actions} i j =
    Software Practice and Exprience Vol. 24(2) 233 (Feb 1994)
 *)
 
-let comp_clusters ({cases=cases ; actions=actions} as s) =
-  let len = Array.length cases in
-  let min_clusters = Array.create len max_int
-  and k = Array.create len 0 in
+let comp_clusters s =
+  let len = Array.length s.cases in
+  let min_clusters = Array.make len max_int
+  and k = Array.make len 0 in
   let get_min i = if i < 0 then 0 else min_clusters.(i) in
 
   for i = 0 to len-1 do
@@ -697,7 +724,7 @@ let comp_clusters ({cases=cases ; actions=actions} as s) =
 let make_switch  {cases=cases ; actions=actions} i j =
   let ll,_,_ = cases.(i)
   and _,hh,_ = cases.(j) in
-  let tbl = Array.create (hh-ll+1) 0
+  let tbl = Array.make (hh-ll+1) 0
   and t = Hashtbl.create 17
   and index = ref 0 in
   let get_index act =
@@ -717,7 +744,7 @@ let make_switch  {cases=cases ; actions=actions} i j =
       tbl.(kk) <- index
     done
   done ;
-  let acts = Array.create !index actions.(0) in
+  let acts = Array.make !index actions.(0) in
   Hashtbl.iter
     (fun act i -> acts.(i) <- actions.(act))
     t ;
@@ -732,7 +759,7 @@ let make_switch  {cases=cases ; actions=actions} i j =
 
 let make_clusters ({cases=cases ; actions=actions} as s) n_clusters k =
   let len = Array.length cases in
-  let r = Array.create n_clusters (0,0,0)
+  let r = Array.make n_clusters (0,0,0)
   and t = Hashtbl.create 17
   and index = ref 0
   and bidon = ref (Array.length actions) in
@@ -768,31 +795,52 @@ let make_clusters ({cases=cases ; actions=actions} as s) n_clusters k =
     if i > 0 then zyva (i-1) (ir-1) in
 
   zyva (len-1) (n_clusters-1) ;
-  let acts = Array.create !index (fun _ -> assert false) in
+  let acts = Array.make !index (fun _ -> assert false) in
   Hashtbl.iter (fun _ (i,act) -> acts.(i) <- act) t ;
   {cases = r ; actions = acts}
 ;;
 
 
-let zyva (low,high) konst arg cases actions =
+let do_zyva (low,high) arg cases actions =
   let old_ok = !ok_inter in
   ok_inter := (abs low <= inter_limit && abs high <= inter_limit) ;
   if !ok_inter <> old_ok then Hashtbl.clear t ;
 
   let s = {cases=cases ; actions=actions} in
+
 (*
-  Printf.eprintf "ZYVA: %b\n" !ok_inter ;
+  Printf.eprintf "ZYVA: %b [low=%i,high=%i]\n" !ok_inter low high ;
   pcases stderr cases ;
   prerr_endline "" ;
 *)
   let n_clusters,k = comp_clusters s in
   let clusters = make_clusters s n_clusters k in
-  let r = c_test konst {arg=arg ; off=0} clusters in
-  r
+  c_test {arg=arg ; off=0} clusters
 
+let abstract_shared actions =
+  let handlers = ref (fun x -> x) in
+  let actions =
+    Array.map
+      (fun act -> match  act with
+      | Single act -> act
+      | Shared act ->
+          let i,h = Arg.make_catch act in
+          let oh = !handlers in
+          handlers := (fun act -> h (oh act)) ;
+          Arg.make_exit i)
+      actions in
+  !handlers,actions
 
+let zyva lh arg cases actions =
+  assert (Array.length cases > 0) ;
+  let actions = actions.act_get_shared () in
+  let hs,actions = abstract_shared actions in
+  hs (do_zyva lh arg cases actions)
 
-and test_sequence konst arg cases actions =
+and test_sequence arg cases actions =
+  assert (Array.length cases > 0) ;
+  let actions = actions.act_get_shared () in
+  let hs,actions = abstract_shared actions in
   let old_ok = !ok_inter in
   ok_inter := false ;
   if !ok_inter <> old_ok then Hashtbl.clear t ;
@@ -804,8 +852,7 @@ and test_sequence konst arg cases actions =
   pcases stderr cases ;
   prerr_endline "" ;
 *)
-  let r = c_test konst {arg=arg ; off=0} s in
-  r
+  hs (c_test {arg=arg ; off=0} s)
 ;;
 
 end

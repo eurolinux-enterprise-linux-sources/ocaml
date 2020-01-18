@@ -1,15 +1,17 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../LICENSE.     */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 /* Asm part of the runtime system, Intel 386 processor */
 /* Must be preprocessed by cpp */
@@ -19,7 +21,7 @@
 /* Linux/BSD with ELF binaries and Solaris do not prefix identifiers with _.
    Linux/BSD with a.out binaries and NextStep do. */
 
-#if defined(SYS_solaris)
+#if (defined(SYS_solaris) && !defined(__GNUC__))
 #define CONCAT(a,b) a/**/b
 #else
 #define CONCAT(a,b) a##b
@@ -115,13 +117,10 @@
 #define PROFILE_C
 #endif
 
-#ifdef SYS_macosx
+/* PR#6038: GCC and Clang seem to require 16-byte alignment nowadays,
+   even if only MacOS X's ABI formally requires it. */
 #define ALIGN_STACK(amount) subl $ amount, %esp ; CFI_ADJUST(amount)
 #define UNDO_ALIGN_STACK(amount) addl $ amount, %esp ; CFI_ADJUST(-amount)
-#else
-#define ALIGN_STACK(amount)
-#define UNDO_ALIGN_STACK(amount)
-#endif
 
 /* Allocation */
 
@@ -304,11 +303,7 @@ LBL(106):
 LBL(107):
     /* Pop the exception handler */
         popl    G(caml_exception_pointer); CFI_ADJUST(-4)
-#ifdef SYS_macosx
         addl    $12, %esp       ; CFI_ADJUST(-12)
-#else
-        addl    $4, %esp        ; CFI_ADJUST(-4)
-#endif
 LBL(109):
     /* Pop the callback link, restoring the global variables */
         popl    G(caml_bottom_of_stack); CFI_ADJUST(-4)
@@ -362,13 +357,13 @@ FUNCTION(caml_raise_exception)
         CFI_STARTPROC
         PROFILE_C
         testl   $1, G(caml_backtrace_active)
-        jne     LBL(111)
+        jne     LBL(112)
         movl    4(%esp), %eax
         movl    G(caml_exception_pointer), %esp
         popl    G(caml_exception_pointer); CFI_ADJUST(-4)
         UNDO_ALIGN_STACK(8)
         ret
-LBL(111):
+LBL(112):
         movl    4(%esp), %esi          /* Save exception bucket in esi */
         ALIGN_STACK(12)
         pushl   G(caml_exception_pointer); CFI_ADJUST(4)  /* 4: sp of handler */
@@ -449,10 +444,8 @@ FUNCTION(caml_ml_array_bound_error)
         movl    %edx, G(caml_last_return_address)
         leal    4(%esp), %edx
         movl    %edx, G(caml_bottom_of_stack)
-    /* For MacOS X: re-align the stack */
-#ifdef SYS_macosx
+    /* Re-align the stack */
         andl    $-16, %esp
-#endif
     /* Branch to [caml_array_bound_error] (never returns) */
         call    G(caml_array_bound_error)
         CFI_ENDPROC

@@ -1,17 +1,19 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*        Mehdi Dogguy, PPS laboratory, University Paris Diderot       *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.   Modifications Copyright 2010 Mehdi Dogguy,       *)
-(*  used and distributed as part of OCaml by permission from           *)
-(*  the author.   This file is distributed under the terms of the      *)
-(*  Q Public License version 1.0.                                      *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*         Mehdi Dogguy, PPS laboratory, University Paris Diderot         *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*   Copyright 2010 Mehdi Dogguy                                          *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Dump info on .cmi, .cmo, .cmx, .cma, .cmxa, .cmxs files
    and on bytecode executables. *)
@@ -20,7 +22,10 @@ open Printf
 open Misc
 open Config
 open Cmo_format
-open Clambda
+
+(* Command line option to prevent printing approximation and function code *)
+let no_approx = ref false
+let no_code = ref false
 
 let input_stringlist ic len =
   let get_string_list sect len =
@@ -32,19 +37,31 @@ let input_stringlist ic len =
       else acc
     in fold 0 0 []
   in
-  let sect = Misc.input_bytes ic len in
+  let sect = really_input_string ic len in
   get_string_list sect len
 
-let print_name_crc (name, crc) =
-  printf "\t%s\t%s\n" (Digest.to_hex crc) name
+let dummy_crc = String.make 32 '-'
+
+let print_name_crc (name, crco) =
+  let crc =
+    match crco with
+      None -> dummy_crc
+    | Some crc -> Digest.to_hex crc
+  in
+    printf "\t%s\t%s\n" crc name
 
 let print_line name =
   printf "\t%s\n" name
+
+let print_required_global id =
+  printf "\t%s\n" (Ident.name id)
 
 let print_cmo_infos cu =
   printf "Unit name: %s\n" cu.cu_name;
   print_string "Interfaces imported:\n";
   List.iter print_name_crc cu.cu_imports;
+  print_string "Required globals:\n";
+  List.iter print_required_global cu.cu_required_globals;
   printf "Uses unsafe features: ";
   (match cu.cu_primitives with
     | [] -> printf "no\n"
@@ -53,31 +70,6 @@ let print_cmo_infos cu =
         printf "Primitives declared in this module:\n";
         List.iter print_line l);
   printf "Force link: %s\n" (if cu.cu_force_link then "YES" else "no")
-
-let rec print_approx_infos ppf = function
-    Value_closure(fundesc, approx) ->
-      Format.fprintf ppf "@[<2>function %s@ arity %i"
-        fundesc.fun_label fundesc.fun_arity;
-      if fundesc.fun_closed then begin
-        Format.fprintf ppf "@ (closed)"
-      end;
-      if fundesc.fun_inline <> None then begin
-        Format.fprintf ppf "@ (inline)"
-      end;
-      Format.fprintf ppf "@ -> @ %a@]" print_approx_infos approx
-  | Value_tuple approx ->
-      let tuple ppf approx =
-        for i = 0 to Array.length approx - 1 do
-          if i > 0 then Format.fprintf ppf ";@ ";
-          Format.fprintf ppf "%i: %a" i print_approx_infos approx.(i)
-        done in
-      Format.fprintf ppf "@[<hov 1>(%a)@]" tuple approx
-  | Value_unknown ->
-      Format.fprintf ppf "_"
-  | Value_integer n ->
-      Format.fprintf ppf "%d" n
-  | Value_constptr n ->
-      Format.fprintf ppf "%dp" n
 
 let print_spaced_string s =
   printf " %s" s
@@ -95,10 +87,27 @@ let print_cma_infos (lib : Cmo_format.library) =
   printf "\n";
   List.iter print_cmo_infos lib.lib_units
 
-let print_cmi_infos name sign crcs =
+let print_cmi_infos name crcs =
   printf "Unit name: %s\n" name;
   printf "Interfaces imported:\n";
   List.iter print_name_crc crcs
+
+let print_cmt_infos cmt =
+  let open Cmt_format in
+  printf "Cmt unit name: %s\n" cmt.cmt_modname;
+  print_string "Cmt interfaces imported:\n";
+  List.iter print_name_crc cmt.cmt_imports;
+  printf "Source file: %s\n"
+         (match cmt.cmt_sourcefile with None -> "(none)" | Some f -> f);
+  printf "Compilation flags:";
+  Array.iter print_spaced_string cmt.cmt_args;
+  printf "\nLoad path:";
+  List.iter print_spaced_string cmt.cmt_loadpath;
+  printf "\n";
+  printf "cmt interface digest: %s\n"
+    (match cmt.cmt_interface_digest with
+     | None -> ""
+     | Some crc -> Digest.to_hex crc)
 
 let print_general_infos name crc defines cmi cmx =
   printf "Name: %s\n" name;
@@ -110,13 +119,47 @@ let print_general_infos name crc defines cmi cmx =
   printf "Implementations imported:\n";
   List.iter print_name_crc cmx
 
+let print_global_table table =
+  printf "Globals defined:\n";
+  Tbl.iter
+    (fun id _ -> print_line (Ident.name id))
+    table.num_tbl
+
 open Cmx_format
 
 let print_cmx_infos (ui, crc) =
   print_general_infos
     ui.ui_name crc ui.ui_defines ui.ui_imports_cmi ui.ui_imports_cmx;
-  printf "Approximation:\n";
-  Format.fprintf Format.std_formatter "  %a@." print_approx_infos ui.ui_approx;
+  begin match ui.ui_export_info with
+  | Clambda approx ->
+    if not !no_approx then begin
+      printf "Clambda approximation:\n";
+      Format.fprintf Format.std_formatter "  %a@." Printclambda.approx approx
+    end else
+      Format.printf "Clambda unit@.";
+  | Flambda export ->
+    if not !no_approx || not !no_code then
+      printf "Flambda export information:\n"
+    else
+      printf "Flambda unit\n";
+    if not !no_approx then begin
+      let cu =
+        Compilation_unit.create (Ident.create_persistent ui.ui_name)
+          (Linkage_name.create "__dummy__")
+      in
+      Compilation_unit.set_current cu;
+      let root_symbols =
+        List.map (fun s ->
+            Symbol.unsafe_create cu (Linkage_name.create ("caml"^s)))
+          ui.ui_defines
+      in
+      Format.printf "approximations@ %a@.@."
+        Export_info.print_approx (export, root_symbols)
+    end;
+    if not !no_code then
+      Format.printf "functions@ %a@.@."
+        Export_info.print_functions export
+  end;
   let pr_funs _ fns =
     List.iter (fun arity -> printf " %d" arity) fns in
   printf "Currying functions:%a\n" pr_funs ui.ui_curry_fun;
@@ -169,7 +212,7 @@ let dump_byte ic =
            | "CRCS" ->
                p_section
                  "Imported units"
-                 (input_value ic : (string * Digest.t) list)
+                 (input_value ic : (string * Digest.t option) list)
            | "DLLS" ->
                p_list
                  "Used DLLs"
@@ -185,6 +228,8 @@ let dump_byte ic =
                  "Primitives used"
                  print_line
                  (input_stringlist ic len)
+           | "SYMB" ->
+               print_global_table (input_value ic)
            | _ -> ()
        with _ -> ()
     )
@@ -201,13 +246,13 @@ let read_dyn_header filename ic =
                                 (Filename.quote filename)
                                 tempfile) in
         if rc <> 0 then failwith "cannot read";
-        let tc = open_in tempfile in
+        let tc = Scanf.Scanning.from_file tempfile in
         try_finally
           (fun () ->
-            let ofs = Scanf.fscanf tc "%Ld" (fun x -> x) in
+            let ofs = Scanf.bscanf tc "%Ld" (fun x -> x) in
             LargeFile.seek_in ic ofs;
             Some(input_value ic : dynheader))
-          (fun () -> close_in tc))
+          (fun () -> Scanf.Scanning.close_in tc))
       (fun () -> remove_file tempfile)
   with Failure _ | Sys_error _ -> None
 
@@ -215,7 +260,7 @@ let dump_obj filename =
   printf "File %s\n" filename;
   let ic = open_in_bin filename in
   let len_magic_number = String.length cmo_magic_number in
-  let magic_number = Misc.input_bytes ic len_magic_number in
+  let magic_number = really_input_string ic len_magic_number in
   if magic_number = cmo_magic_number then begin
     let cu_pos = input_binary_int ic in
     seek_in ic cu_pos;
@@ -228,11 +273,19 @@ let dump_obj filename =
     let toc = (input_value ic : library) in
     close_in ic;
     print_cma_infos toc
-  end else if magic_number = cmi_magic_number then begin
-    let cmi = Cmi_format.input_cmi ic in
+  end else if magic_number = cmi_magic_number ||
+              magic_number = cmt_magic_number then begin
     close_in ic;
-    print_cmi_infos cmi.Cmi_format.cmi_name cmi.Cmi_format.cmi_sign
-      cmi.Cmi_format.cmi_crcs
+    let cmi, cmt = Cmt_format.read filename in
+    begin match cmi with
+     | None -> ()
+     | Some cmi ->
+         print_cmi_infos cmi.Cmi_format.cmi_name cmi.Cmi_format.cmi_crcs
+    end;
+    begin match cmt with
+     | None -> ()
+     | Some cmt -> print_cmt_infos cmt
+    end
   end else if magic_number = cmx_magic_number then begin
     let ui = (input_value ic : unit_infos) in
     let crc = Digest.input ic in
@@ -245,7 +298,7 @@ let dump_obj filename =
   end else begin
     let pos_trailer = in_channel_length ic - len_magic_number in
     let _ = seek_in ic pos_trailer in
-    let _ = really_input ic magic_number 0 len_magic_number in
+    let magic_number = really_input_string ic len_magic_number in
     if magic_number = Config.exec_magic_number then begin
       dump_byte ic;
       close_in ic
@@ -267,12 +320,21 @@ let dump_obj filename =
     end
   end
 
-let arg_list = []
+let arg_list = [
+  "-no-approx", Arg.Set no_approx, " Do not print module approximation information";
+  "-no-code", Arg.Set no_code, " Do not print code from exported flambda functions";
+  "-args", Arg.Expand Arg.read_arg,
+     "<file> Read additional newline separated command line arguments \n\
+     \      from <file>";
+  "-args0", Arg.Expand Arg.read_arg0,
+     "<file> Read additional NUL separated command line arguments from \n\
+     \      <file>";
+]
 let arg_usage =
    Printf.sprintf "%s [OPTIONS] FILES : give information on files" Sys.argv.(0)
 
 let main() =
-  Arg.parse arg_list dump_obj arg_usage;
+  Arg.parse_expand arg_list dump_obj arg_usage;
   exit 0
 
 let _ = main ()

@@ -1,15 +1,3 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*    Valerie Menissier-Morain, projet Cristal, INRIA Rocquencourt     *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
-
 open Test;;
 open Nat;;
 open Big_int;;
@@ -187,6 +175,21 @@ eq_num (num_of_string "0.23", Ratio (ratio_of_string "0.23/1"));;
 
 failwith_test 11
 num_of_string ("frlshjkurty") (Failure "num_of_string");;
+
+test 12
+eq_num (num_of_string "0xAbCdEf",
+        Big_int (big_int_of_int 0xabcdef));;
+
+test 13
+eq_num (num_of_string "0b1101/0O1765",
+        Ratio (ratio_of_string "0b1101/0o1765"));;
+
+test 14
+eq_num (num_of_string "-12_34_56",
+        Big_int (big_int_of_int (-123456)));;
+
+test 15
+eq_num (num_of_string "0B101010", Big_int (big_int_of_int 42));;
 
 (*******
 

@@ -1,12 +1,15 @@
 (**************************************************************************)
 (*                                                                        *)
-(*                                OCaml                                   *)
+(*                                 OCaml                                  *)
 (*                                                                        *)
 (*    Hongbo Zhang (University of Pennsylvania)                           *)
 (*                                                                        *)
 (*   Copyright 2007 Institut National de Recherche en Informatique et     *)
-(*   en Automatique.  All rights reserved.  This file is distributed      *)
-(*   under the terms of the Q Public License version 1.0.                 *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
 
@@ -120,7 +123,7 @@ module Asttypes = struct
         (('all_a0 loc) * ('all_a0 loc)) -> 'result =
     fun mf_a ({ txt = a0; loc = a1 }, { txt = b0; loc = b1 }) ->
       (mf_a (a0, b0)) && (Location.eq_t (a1, b1))
-    
+
 end
 
 let rec eq_row_field : (row_field * row_field) -> 'result =
@@ -185,7 +188,7 @@ and eq_core_type : (core_type * core_type) -> 'result =
     ({ ptyp_desc = a0; ptyp_loc = a1 },
      { ptyp_desc = b0; ptyp_loc = b1 })
     -> (eq_core_type_desc (a0, b0)) && (Location.eq_t (a1, b1))
-  
+
 let eq_class_infos :
   'all_a0.
     (('all_a0 * 'all_a0) -> 'result) ->
@@ -221,7 +224,7 @@ let eq_class_infos :
              (eq_bool (a0, b0)) && (eq_bool (a1, b1)))
           (a4, b4)))
       && (Location.eq_t (a5, b5))
-  
+
 let rec eq_pattern_desc : (pattern_desc * pattern_desc) -> 'result =
   function
   | (Ppat_any, Ppat_any) -> true
@@ -231,10 +234,9 @@ let rec eq_pattern_desc : (pattern_desc * pattern_desc) -> 'result =
   | (Ppat_constant a0, Ppat_constant b0) ->
       Asttypes.eq_constant (a0, b0)
   | (Ppat_tuple a0, Ppat_tuple b0) -> eq_list eq_pattern (a0, b0)
-  | (Ppat_construct (a0, a1, a2), Ppat_construct (b0, b1, b2)) ->
+  | (Ppat_construct (a0, a1), Ppat_construct (b0, b1)) ->
       ((Asttypes.eq_loc Longident.eq_t (a0, b0)) &&
          (eq_option eq_pattern (a1, b1)))
-        && (eq_bool (a2, b2))
   | (Ppat_variant (a0, a1), Ppat_variant (b0, b1)) ->
       (Asttypes.eq_label (a0, b0)) && (eq_option eq_pattern (a1, b1))
   | (Ppat_record (a0, a1), Ppat_record (b0, b1)) ->
@@ -260,7 +262,7 @@ and eq_pattern : (pattern * pattern) -> 'result =
     ({ ppat_desc = a0; ppat_loc = a1 },
      { ppat_desc = b0; ppat_loc = b1 })
     -> (eq_pattern_desc (a0, b0)) && (Location.eq_t (a1, b1))
-  
+
 let rec eq_structure_item_desc :
   (structure_item_desc * structure_item_desc) -> 'result =
   function
@@ -274,12 +276,13 @@ let rec eq_structure_item_desc :
   | (Pstr_primitive (a0, a1), Pstr_primitive (b0, b1)) ->
       (Asttypes.eq_loc eq_string (a0, b0)) &&
         (eq_value_description (a1, b1))
-  | (Pstr_type a0, Pstr_type b0) ->
+  | (Pstr_type (a0, a1), Pstr_type (b0, b1)) ->
+      (Asttypes.eq_rec_flag (a0, b0)) &&
       eq_list
         (fun ((a0, a1), (b0, b1)) ->
            (Asttypes.eq_loc eq_string (a0, b0)) &&
              (eq_type_declaration (a1, b1)))
-        (a0, b0)
+        (a1, b1)
   | (Pstr_exception (a0, a1), Pstr_exception (b0, b1)) ->
       (Asttypes.eq_loc eq_string (a0, b0)) &&
         (eq_exception_declaration (a1, b1))
@@ -360,12 +363,13 @@ and eq_signature_item_desc :
   | (Psig_value (a0, a1), Psig_value (b0, b1)) ->
       (Asttypes.eq_loc eq_string (a0, b0)) &&
         (eq_value_description (a1, b1))
-  | (Psig_type a0, Psig_type b0) ->
+  | (Psig_type (a0, a1), Psig_type (b0, b1)) ->
+      (Asttypes.eq_rec_flag (a0, b0)) &&
       eq_list
         (fun ((a0, a1), (b0, b1)) ->
            (Asttypes.eq_loc eq_string (a0, b0)) &&
              (eq_type_declaration (a1, b1)))
-        (a0, b0)
+        (a1, b1)
   | (Psig_exception (a0, a1), Psig_exception (b0, b1)) ->
       (Asttypes.eq_loc eq_string (a0, b0)) &&
         (eq_exception_declaration (a1, b1))
@@ -471,8 +475,8 @@ and eq_class_field : (class_field * class_field) -> 'result =
 and eq_class_structure :
   (class_structure * class_structure) -> 'result =
   fun
-    ({ pcstr_pat = a0; pcstr_fields = a1 },
-     { pcstr_pat = b0; pcstr_fields = b1 })
+    ({ pcstr_self = a0; pcstr_fields = a1 },
+     { pcstr_self = b0; pcstr_fields = b1 })
     -> (eq_pattern (a0, b0)) && (eq_list eq_class_field (a1, b1))
 and eq_class_expr_desc :
   (class_expr_desc * class_expr_desc) -> 'result =
@@ -565,7 +569,7 @@ and eq_class_type_desc :
         (eq_list eq_core_type (a1, b1))
   | (Pcty_signature a0, Pcty_signature b0) ->
       eq_class_signature (a0, b0)
-  | (Pcty_fun (a0, a1, a2), Pcty_fun (b0, b1, b2)) ->
+  | (Pcty_arrow (a0, a1, a2), Pcty_arrow (b0, b1, b2)) ->
       ((Asttypes.eq_label (a0, b0)) && (eq_core_type (a1, b1))) &&
         (eq_class_type (a2, b2))
   | (_, _) -> false
@@ -657,14 +661,17 @@ and eq_expression_desc :
                (eq_pattern (a0, b0)) && (eq_expression (a1, b1)))
             (a1, b1)))
         && (eq_expression (a2, b2))
-  | (Pexp_function (a0, a1, a2), Pexp_function (b0, b1, b2)) ->
+  | Pexp_fun (a1, a1, a2, a3), Pexp_function (b0, b1, b2, b3) ->
       ((Asttypes.eq_label (a0, b0)) &&
-         (eq_option eq_expression (a1, b1)))
-        &&
-        (eq_list
-           (fun ((a0, a1), (b0, b1)) ->
-              (eq_pattern (a0, b0)) && (eq_expression (a1, b1)))
-           (a2, b2))
+       (eq_option eq_expression (a1, b1)) &&
+       (eq_pattern a2 b2) &&
+       (eq_expression (a3, b3)))
+  | (Pexp_function (a0, a1, a2), Pexp_function (b0, b1, b2)) ->
+      (* FIX *)
+      eq_list
+        (fun ((a0, a1), (b0, b1)) ->
+          (eq_pattern (a0, b0)) && (eq_expression (a1, b1)))
+        (a2, b2)
   | (Pexp_apply (a0, a1), Pexp_apply (b0, b1)) ->
       (eq_expression (a0, b0)) &&
         (eq_list
@@ -685,10 +692,9 @@ and eq_expression_desc :
               (eq_pattern (a0, b0)) && (eq_expression (a1, b1)))
            (a1, b1))
   | (Pexp_tuple a0, Pexp_tuple b0) -> eq_list eq_expression (a0, b0)
-  | (Pexp_construct (a0, a1, a2), Pexp_construct (b0, b1, b2)) ->
+  | (Pexp_construct (a0, a1), Pexp_construct (b0, b1)) ->
       ((Asttypes.eq_loc Longident.eq_t (a0, b0)) &&
          (eq_option eq_expression (a1, b1)))
-        && (eq_bool (a2, b2))
   | (Pexp_variant (a0, a1), Pexp_variant (b0, b1)) ->
       (Asttypes.eq_label (a0, b0)) &&
         (eq_option eq_expression (a1, b1))
@@ -743,7 +749,6 @@ and eq_expression_desc :
          (eq_module_expr (a1, b1)))
         && (eq_expression (a2, b2))
   | (Pexp_assert a0, Pexp_assert b0) -> eq_expression (a0, b0)
-  | (Pexp_assertfalse, Pexp_assertfalse) -> true
   | (Pexp_lazy a0, Pexp_lazy b0) -> eq_expression (a0, b0)
   | (Pexp_poly (a0, a1), Pexp_poly (b0, b1)) ->
       (eq_expression (a0, b0)) && (eq_option eq_core_type (a1, b1))
@@ -760,7 +765,7 @@ and eq_expression : (expression * expression) -> 'result =
     ({ pexp_desc = a0; pexp_loc = a1 },
      { pexp_desc = b0; pexp_loc = b1 })
     -> (eq_expression_desc (a0, b0)) && (Location.eq_t (a1, b1))
-  
+
 let rec eq_directive_argument :
   (directive_argument * directive_argument) -> 'result =
   function

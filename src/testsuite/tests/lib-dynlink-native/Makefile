@@ -1,28 +1,30 @@
-#########################################################################
-#                                                                       #
-#                                 OCaml                                 #
-#                                                                       #
-#                 Xavier Clerc, SED, INRIA Rocquencourt                 #
-#                                                                       #
-#   Copyright 2010 Institut National de Recherche en Informatique et    #
-#   en Automatique.  All rights reserved.  This file is distributed     #
-#   under the terms of the Q Public License version 1.0.                #
-#                                                                       #
-#########################################################################
+#**************************************************************************
+#*                                                                        *
+#*                                OCaml                                   *
+#*                                                                        *
+#*                 Xavier Clerc, SED, INRIA Rocquencourt                  *
+#*                                                                        *
+#*   Copyright 2010 Institut National de Recherche en Informatique et     *
+#*     en Automatique.                                                    *
+#*                                                                        *
+#*   All rights reserved.  This file is distributed under the terms of    *
+#*   the GNU Lesser General Public License version 2.1, with the          *
+#*   special exception on linking described in the file LICENSE.          *
+#*                                                                        *
+#**************************************************************************
 
-BASEDIR=../..
+BASEDIR=$(shell pwd)/../..
 
 COMPFLAGS=-I $(OTOPDIR)/otherlibs/$(UNIXLIBVAR)unix \
 	  -I $(OTOPDIR)/otherlibs/systhreads \
           -I $(OTOPDIR)/otherlibs/dynlink
-LD_PATH=$(TOPDIR)/otherlibs/$(UNIXLIBVAR)unix:$(TOPDIR)/otherlibs/systhreads:$(TOPDIR)/otherlibs/dynlink
+LD_PATH = $(TOPDIR)/otherlibs/$(UNIXLIBVAR)unix:$(TOPDIR)/otherlibs/systhreads\
+:$(TOPDIR)/otherlibs/dynlink
 
 .PHONY: default
 default:
-	@if ! $(SUPPORTS_SHARED_LIBRARIES); then \
-	  echo 'skipped (shared libraries not available)'; \
-	elif $(BYTECODE_ONLY); then \
-	  echo 'skipped (native compiler not available)' ; \
+	@if ! $(SUPPORTS_SHARED_LIBRARIES) || $(BYTECODE_ONLY) ; then \
+	  echo " ... testing 'main' => skipped"; \
 	else \
 	   $(SET_LD_PATH) $(MAKE) all; \
 	fi
@@ -49,7 +51,7 @@ run:
 
 main$(EXE): api.cmx main.cmx
 	@$(OCAMLOPT) -thread -o main$(EXE) -linkall unix.cmxa threads.cmxa \
-	             dynlink.cmxa api.cmx main.cmx $(PTHREAD_LINK)
+	             dynlink.cmxa api.cmx main.cmx
 
 main_ext$(EXE): api.cmx main.cmx factorial.$(O)
 	@$(OCAMLOPT) -o main_ext$(EXE) dynlink.cmxa api.cmx main.cmx \
@@ -67,13 +69,16 @@ plugin2.cmx: api.cmx plugin.cmi plugin.cmx
 	@mv plugin.cmx.bak plugin.cmx
 
 sub/api.so: sub/api.cmi sub/api.ml
-	@cd sub; $(OCAMLOPT) -c $(SHARED) api.ml
+	@cd sub; $(OCAMLOPT) -c $(SUPPORTS_SHARED_LIBRARIES) api.ml
 
 sub/api.cmi: sub/api.mli
-	@cd sub; $(OCAMLOPT) -c api.mli
+	@cd sub; $(OCAMLOPT) -c -opaque api.mli
 
 sub/api.cmx: sub/api.cmi sub/api.ml
 	@cd sub; $(OCAMLOPT) -c api.ml
+
+plugin.cmi: plugin.mli
+	@$(OCAMLOPT) -c -opaque plugin.mli
 
 plugin.cmx: api.cmx plugin.cmi
 sub/plugin.cmx: api.cmx
@@ -102,17 +107,16 @@ mypack.cmx: packed1.cmx
 mylib.cmxa: plugin.cmx plugin2.cmx
 	@$(OCAMLOPT) $(COMPFLAGS) -a -o mylib.cmxa plugin.cmx plugin2.cmx
 
-factorial.$(O): factorial.c caml
-	@$(OCAMLOPT) -c -ccopt "$(SHAREDCCCOMPOPTS)" -ccopt -I -ccopt . \
+factorial.$(O): factorial.c
+	@$(OCAMLOPT) -c -ccopt "$(SHAREDCCCOMPOPTS)" -ccopt -I \
+	             -ccopt $(CTOPDIR)/byterun \
 	             factorial.c
-
-caml:
-	@mkdir -p caml || :
-	@cp $(TOPDIR)/byterun/*.h caml/
 
 .PHONY: promote
 promote:
 	@cp result reference
+
+.PRECIOUS: %.cmx
 
 .PHONY: clean
 clean: defaultclean
@@ -120,6 +124,5 @@ clean: defaultclean
 	@rm -f *.a *.lib
 	@rm -f sub/*.so sub/*.o sub/*.cm* sub/*.s sub/*.asm sub/*.obj
 	@rm -f marshal.data
-	@rm -rf caml
 
 include $(BASEDIR)/makefiles/Makefile.common

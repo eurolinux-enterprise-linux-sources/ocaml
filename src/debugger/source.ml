@@ -1,15 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*          Jerome Vouillon, projet Cristal, INRIA Rocquencourt        *)
-(*          OCaml port by John Malecki and Xavier Leroy                *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*           Jerome Vouillon, projet Cristal, INRIA Rocquencourt          *)
+(*           OCaml port by John Malecki and Xavier Leroy                  *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (************************ Source management ****************************)
 
@@ -21,6 +24,8 @@ let source_extensions = [".ml"]
 (*** Conversion function. ***)
 
 let source_of_module pos mdle =
+  let pos_fname = pos.Lexing.pos_fname in
+  if Sys.file_exists pos_fname then pos_fname else
   let is_submodule m m' =
     let len' = String.length m' in
     try
@@ -50,10 +55,10 @@ let source_of_module pos mdle =
           try find_in_path_uncap path (innermost_module ^ ext)
           with Not_found -> loop exts
     in loop source_extensions
-  else   if Filename.is_implicit fname then
-    find_in_path path fname
-  else
-    fname
+  else if Filename.is_relative fname then
+    find_in_path_rel path fname
+  else if Sys.file_exists fname then fname
+  else raise Not_found
 
 (*** Buffer cache ***)
 
@@ -61,8 +66,6 @@ let source_of_module pos mdle =
 type buffer = string * (int * int) list ref
 
 let buffer_max_count = ref 10
-
-let cache_size = 30
 
 let buffer_list =
   ref ([] : (string * buffer) list)
@@ -74,7 +77,7 @@ let get_buffer pos mdle =
   try List.assoc mdle !buffer_list with
     Not_found ->
       let inchan = open_in_bin (source_of_module pos mdle) in
-      let content = Misc.input_bytes inchan (in_channel_length inchan) in
+      let content = really_input_string inchan (in_channel_length inchan) in
       let buffer = (content, ref []) in
       buffer_list :=
         (list_truncate !buffer_max_count ((mdle, buffer)::!buffer_list));
@@ -96,7 +99,7 @@ let insert_pos buffer ((position, line) as pair) =
     function
       [] ->
         [(position, line)]
-    | ((pos, lin) as a::l) as l' ->
+    | ((_pos, lin) as a::l) as l' ->
         if lin < line then
           pair::l'
         else if lin = line then
@@ -136,13 +139,13 @@ let line_of_pos buffer position =
           raise Out_of_range
         else
           (0, 1)
-    | ((pos, line) as pair)::l ->
+    | ((pos, _line) as pair)::l ->
         if pos > position then
           find l
         else
           pair
   and find_line previous =
-    let (pos, line) as next = next_line buffer previous in
+    let (pos, _line) as next = next_line buffer previous in
       if pos <= position then
         find_line next
       else
@@ -161,7 +164,7 @@ let pos_of_line buffer line =
           raise Out_of_range
         else
           (0, 1)
-    | ((pos, lin) as pair)::l ->
+    | ((_pos, lin) as pair)::l ->
         if lin > line then
           find l
         else

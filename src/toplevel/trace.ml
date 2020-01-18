@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* The "trace" facility *)
 
@@ -52,7 +55,8 @@ let set_code_pointer cls ptr = Obj.set_field cls 0 ptr
 let invoke_traced_function codeptr env arg =
   Meta.invoke_traced_function codeptr env arg
 
-let print_label ppf l = if l <> "" then fprintf ppf "%s:" l
+let print_label ppf l =
+  if l <> Asttypes.Nolabel then fprintf ppf "%s:" (Printtyp.string_of_label l)
 
 (* If a function returns a functional value, wrap it into a trace code *)
 
@@ -63,7 +67,7 @@ let rec instrument_result env name ppf clos_typ =
         match name with
         | Lident s -> Lident(s ^ "*")
         | Ldot(lid, s) -> Ldot(lid, s ^ "*")
-        | Lapply(l1, l2) -> fatal_error "Trace.instrument_result" in
+        | Lapply _ -> fatal_error "Trace.instrument_result" in
       let trace_res = instrument_result env starred_name ppf t2 in
       (fun clos_val ->
         Obj.repr (fun arg ->
@@ -96,14 +100,18 @@ let rec instrument_result env name ppf clos_typ =
 
 (* Same as instrument_result, but for a toplevel closure (modified in place) *)
 
+exception Dummy
+let _ = Dummy
+
 let instrument_closure env name ppf clos_typ =
   match (Ctype.repr(Ctype.expand_head env clos_typ)).desc with
   | Tarrow(l, t1, t2, _) ->
       let trace_res = instrument_result env name ppf t2 in
       (fun actual_code closure arg ->
         if not !may_trace then begin
-          let res = invoke_traced_function actual_code closure arg
-          in res (* do not remove let, prevents tail-call to invoke_traced_ *)
+          try invoke_traced_function actual_code closure arg
+          with Dummy -> assert false
+          (* do not remove handler, prevents tail-call to invoke_traced_ *)
         end else begin
           may_trace := false;
           try

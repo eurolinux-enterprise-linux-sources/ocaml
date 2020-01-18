@@ -1,14 +1,18 @@
 {
-(***********************************************************************)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** The lexer for string to build text structures. *)
 
@@ -20,16 +24,16 @@ let char_number = ref 0
 
 let string_buffer = Buffer.create 32
 
-(** Fonction de remise a zero de la chaine de caracteres tampon *)
+(** Reset the buffer *)
 let reset_string_buffer () = Buffer.reset string_buffer
 
-(** Fonction d'ajout d'un caractere dans la chaine de caracteres tampon *)
-let ajout_char_string = Buffer.add_char string_buffer
+(** Add a character to the buffer *)
+let add_char_string = Buffer.add_char string_buffer
 
 (** Add a string to the buffer. *)
-let ajout_string = Buffer.add_string string_buffer
+let add_string = Buffer.add_string string_buffer
 
-let lecture_string () = Buffer.contents string_buffer
+let read_string () = Buffer.contents string_buffer
 
 
 (** the variable which will contain the description string.
@@ -151,6 +155,7 @@ let end_verb = blank_nl"v}"
 let begin_ele_ref = "{!"blank_nl | "{!"
 let begin_val_ref = "{!val:"blank_nl | "{!val:"
 let begin_typ_ref = "{!type:"blank_nl | "{!type:"
+let begin_ext_ref = "{!extension:"blank_nl | "{!extension:"
 let begin_exc_ref = "{!exception:"blank_nl | "{!exception:"
 let begin_mod_ref = "{!module:"blank_nl | "{!module:"
 let begin_modt_ref = "{!modtype:"blank_nl | "{!modtype:"
@@ -189,12 +194,11 @@ rule main = parse
       if !verb_mode || !target_mode || !code_pre_mode ||
         (!open_brackets >= 1) then
         Char (Lexing.lexeme lexbuf)
-      else
-        let _ =
-          if !ele_ref_mode then
-            ele_ref_mode := false
-        in
+      else begin
+        if !ele_ref_mode then
+          ele_ref_mode := false;
         END
+      end
     }
 | begin_title
     {
@@ -529,6 +533,23 @@ rule main = parse
           )
     }
 
+| begin_ext_ref
+    {
+      incr_cpts lexbuf ;
+      if !verb_mode || !target_mode || !code_pre_mode || !open_brackets >= 1 then
+        Char (Lexing.lexeme lexbuf)
+      else
+        if not !ele_ref_mode then
+          (
+           ele_ref_mode := true;
+           EXT_REF
+          )
+        else
+          (
+           Char (Lexing.lexeme lexbuf)
+          )
+    }
+
 | begin_exc_ref
     {
       incr_cpts lexbuf ;
@@ -828,6 +849,7 @@ rule main = parse
       else
         LBRACE
     }
+| '\r' { main lexbuf }
 | _
     {
       incr_cpts lexbuf ;

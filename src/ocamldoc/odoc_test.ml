@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2004 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2004 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Custom generator to perform test on ocamldoc. *)
 
@@ -53,10 +56,11 @@ struct
           p fmt "# type %s:\n" t.ty_name;
           if self#must_display_types then
             (
-             p fmt "# manifest (Odoc_info.string_of_type_expr):\n<[%s]>\n"
+             p fmt "# manifest :\n<[%s]>\n"
                (match t.ty_manifest with
                  None -> "None"
-               | Some e -> Odoc_info.string_of_type_expr e
+               | Some (Object_type _fields) -> "< object type >" (* TODO *)
+               | Some (Other e) -> Odoc_info.string_of_type_expr e
                );
             );
 
@@ -113,7 +117,7 @@ struct
     object
       inherit G.generator as base
 
-      method generate l =
+      method! generate l =
         base#generate l;
         g#generate l
     end

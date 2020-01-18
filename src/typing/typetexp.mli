@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Typechecking of type expressions for the core language *)
 
@@ -25,8 +28,9 @@ val transl_simple_type_delayed:
 val transl_type_scheme:
         Env.t -> Parsetree.core_type -> Typedtree.core_type
 val reset_type_variables: unit -> unit
-val enter_type_variable: bool -> Location.t -> string -> type_expr
 val type_variable: Location.t -> string -> type_expr
+val transl_type_param:
+  Env.t -> Parsetree.core_type -> Typedtree.core_type
 
 type variable_context
 val narrow: unit -> variable_context
@@ -62,6 +66,9 @@ type error =
   | Unbound_cltype of Longident.t
   | Ill_typed_functor_application of Longident.t
   | Illegal_reference_to_recursive_module
+  | Access_functor_as_structure of Longident.t
+  | Apply_structure_as_functor of Longident.t
+  | Cannot_scrape_alias of Longident.t * Path.t
 
 exception Error of Location.t * Env.t * error
 
@@ -82,19 +89,21 @@ val find_type:
 val find_constructor:
     Env.t -> Location.t -> Longident.t -> constructor_description
 val find_all_constructors:
-    Env.t -> Location.t -> Longident.t -> 
+    Env.t -> Location.t -> Longident.t ->
     (constructor_description * (unit -> unit)) list
 val find_label:
     Env.t -> Location.t -> Longident.t -> label_description
 val find_all_labels:
-    Env.t -> Location.t -> Longident.t -> 
+    Env.t -> Location.t -> Longident.t ->
     (label_description * (unit -> unit)) list
 val find_value:
     Env.t -> Location.t -> Longident.t -> Path.t * value_description
 val find_class:
     Env.t -> Location.t -> Longident.t -> Path.t * class_declaration
 val find_module:
-    Env.t -> Location.t -> Longident.t -> Path.t * module_type
+    Env.t -> Location.t -> Longident.t -> Path.t * module_declaration
+val lookup_module:
+    ?load:bool -> Env.t -> Location.t -> Longident.t -> Path.t
 val find_modtype:
     Env.t -> Location.t -> Longident.t -> Path.t * modtype_declaration
 val find_class_type:
@@ -102,9 +111,3 @@ val find_class_type:
 
 val unbound_constructor_error: Env.t -> Longident.t Location.loc -> 'a
 val unbound_label_error: Env.t -> Longident.t Location.loc -> 'a
-
-type cd
-val spellcheck_simple:
-    Format.formatter ->
-    (('a -> cd -> cd) -> Longident.t option -> 'b -> cd -> cd) ->
-    ('a -> string) -> 'b -> Longident.t -> unit

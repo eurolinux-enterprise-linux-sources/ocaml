@@ -1,15 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*          Jerome Vouillon, projet Cristal, INRIA Rocquencourt        *)
-(*          OCaml port by John Malecki and Xavier Leroy                *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*           Jerome Vouillon, projet Cristal, INRIA Rocquencourt          *)
+(*           OCaml port by John Malecki and Xavier Leroy                  *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Input_handling
 open Question
@@ -26,7 +29,7 @@ open Primitives
 
 let line_buffer = Lexing.from_function read_user_input
 
-let rec loop ppf = line_loop ppf line_buffer
+let loop ppf = line_loop ppf line_buffer
 
 let current_duration = ref (-1L)
 
@@ -193,7 +196,7 @@ let main () =
           (Unix.string_of_inet_addr Unix.inet_addr_loopback)^
           ":"^
           (string_of_int (10000 + ((Unix.getpid ()) mod 10000)))
-      | _ -> Filename.concat Filename.temp_dir_name
+      | _ -> Filename.concat (Filename.get_temp_dir_name ())
                                 ("camldebug" ^ (string_of_int (Unix.getpid ())))
       );
     begin try

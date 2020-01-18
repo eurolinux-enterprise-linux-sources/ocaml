@@ -1,15 +1,3 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
-
 let pi = 3.14159265358979323846
 
 let tpi = 2.0 *. pi
@@ -135,8 +123,8 @@ let test np =
   print_int np; print_string "... "; flush stdout;
   let enp = float np in
   let npm = np / 2 - 1 in
-  let pxr = Array.create (np+2) 0.0
-  and pxi = Array.create (np+2) 0.0 in
+  let pxr = Array.make (np+2) 0.0
+  and pxi = Array.make (np+2) 0.0 in
   let t = pi /. enp in
   pxr.(1) <- (enp -. 1.0) *. 0.5;
   pxi.(1) <- 0.0;
@@ -183,4 +171,4 @@ let test np =
   print_newline()
 
 let _ =
-  let np = ref 16 in for i = 1 to 16 do test !np; np := !np*2 done
+  let np = ref 16 in for i = 1 to 15 do test !np; np := !np*2 done

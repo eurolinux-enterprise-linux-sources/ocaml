@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Command-line arguments. *)
 
@@ -172,30 +175,85 @@ let add_hidden_modules s =
 
 let set_generator (g : Odoc_gen.generator) = current_generator := Some g
 
+let anonymous f =
+  let sf =
+    if Filename.check_suffix f "ml" then
+      Odoc_global.Impl_file f
+    else
+        if Filename.check_suffix f !Config.interface_suffix then
+        Odoc_global.Intf_file f
+      else
+        if Filename.check_suffix f "txt" then
+          Odoc_global.Text_file f
+        else
+          failwith (Odoc_messages.unknown_extension f)
+  in
+  Odoc_global.files := !Odoc_global.files @ [sf]
+
+module Options = Main_args.Make_ocamldoc_options(struct
+  let set r () = r := true
+  let unset r () = r := false
+  let _absname = set Location.absname
+  let _I s = Odoc_global.include_dirs :=
+       (Misc.expand_directory Config.standard_library s) :: !Odoc_global.include_dirs
+  let _impl s = Odoc_global.files := !Odoc_global.files @ [Odoc_global.Impl_file s]
+  let _intf s = Odoc_global.files := !Odoc_global.files @ [Odoc_global.Intf_file s]
+  let _intf_suffix s = Config.interface_suffix := s
+  let _labels = unset Clflags.classic
+  let _alias_deps = unset Clflags.transparent_modules
+  let _no_alias_deps = set Clflags.transparent_modules
+  let _app_funct = set Clflags.applicative_functors
+  let _no_app_funct = unset Clflags.applicative_functors
+  let _noassert = set Clflags.noassert
+  let _nolabels = set Clflags.classic
+  let _nostdlib = set Clflags.no_std_include
+  let _open s = Clflags.open_modules := s :: !Clflags.open_modules
+  let _pp s = Clflags.preprocessor := Some s
+  let _ppx s = Clflags.all_ppx := s :: !Clflags.all_ppx
+  let _principal = set Clflags.principal
+  let _no_principal = unset Clflags.principal
+  let _rectypes = set Clflags.recursive_types
+  let _no_rectypes = unset Clflags.recursive_types
+  let _safe_string = unset Clflags.unsafe_string
+  let _short_paths = unset Clflags.real_paths
+  let _strict_sequence = set Clflags.strict_sequence
+  let _no_strict_sequence = unset Clflags.strict_sequence
+  let _strict_formats = set Clflags.strict_formats
+  let _no_strict_formats = unset Clflags.strict_formats
+  let _thread = set Clflags.use_threads
+  let _vmthread = set Clflags.use_vmthreads
+  let _unboxed_types = set Clflags.unboxed_types
+  let _no_unboxed_types = unset Clflags.unboxed_types
+  let _unsafe () = assert false
+  let _unsafe_string = set Clflags.unsafe_string
+  let _v () = Compenv.print_version_and_library "documentation generator"
+  let _version = Compenv.print_version_string
+  let _vnum = Compenv.print_version_string
+  let _w = (Warnings.parse_options false)
+  let _warn_error _ = assert false
+  let _warn_help _ = assert false
+  let _where = Compenv.print_standard_library
+  let _verbose = set Clflags.verbose
+  let _nopervasives = set Clflags.nopervasives
+  let _dsource = set Clflags.dump_source
+  let _dparsetree = set Clflags.dump_parsetree
+  let _dtypedtree = set Clflags.dump_typedtree
+  let _drawlambda = set Clflags.dump_rawlambda
+  let _dlambda = set Clflags.dump_lambda
+  let _dflambda = set Clflags.dump_flambda
+  let _dinstr = set Clflags.dump_instr
+  let anonymous = anonymous
+end)
+
 (** The default option list *)
-let default_options = [
-  "-version", Arg.Unit (fun () -> print_string M.message_version ; print_newline () ; exit 0) , M.option_version ;
-  "-vnum", Arg.Unit (fun () -> print_string M.config_version ;
-                               print_newline () ; exit 0) , M.option_version ;
-  "-v", Arg.Unit (fun () -> Odoc_global.verbose := true), M.verbose_mode ;
-  "-I", Arg.String (fun s ->
-       Odoc_global.include_dirs :=
-         (Misc.expand_directory Config.standard_library s) :: !Odoc_global.include_dirs),
-    M.include_dirs ;
-  "-pp", Arg.String (fun s -> Odoc_global.preprocessor := Some s), M.preprocess ;
-  "-ppx", Arg.String (fun s -> Odoc_global.ppx := s :: !Odoc_global.ppx), M.ppx ;
-  "-impl", Arg.String (fun s ->
-       Odoc_global.files := !Odoc_global.files @ [Odoc_global.Impl_file s]),
-    M.option_impl ;
-    "-intf", Arg.String (fun s ->
-       Odoc_global.files := !Odoc_global.files @ [Odoc_global.Intf_file s]),
-    M.option_intf ;
+let default_options = Options.list @
+[
   "-text", Arg.String (fun s ->
        Odoc_global.files := !Odoc_global.files @ [Odoc_global.Text_file s]),
     M.option_text ;
-  "-rectypes", Arg.Set Odoc_global.recursive_types, M.rectypes ;
-  "-nolabels", Arg.Unit (fun () -> Odoc_global.classic := true), M.nolabels ;
   "-warn-error", Arg.Set Odoc_global.warn_error, M.werr ;
+  "-show-missed-crossref", Arg.Set Odoc_global.show_missed_crossref,
+  M.show_missed_crossref;
   "-hide-warnings", Arg.Clear Odoc_config.print_warnings, M.hide_warnings ;
   "-o", Arg.String (fun s -> Odoc_global.out_file := s), M.out_file ;
   "-d", Arg.String (fun s -> Odoc_global.target_dir := s), M.target_dir ;
@@ -220,25 +278,40 @@ let default_options = [
   "\n\n *** choosing a generator ***\n";
 
 (* generators *)
-  "-html", Arg.Unit (fun () -> set_generator
-       (Odoc_gen.Html (module Odoc_html.Generator : Odoc_html.Html_generator))),
+  "-html", Arg.Unit (fun () ->
+    match !current_generator with
+      Some (Odoc_gen.Html _) -> ()
+    | _ -> set_generator
+             (Odoc_gen.Html (module Odoc_html.Generator : Odoc_html.Html_generator))),
     M.generate_html ;
-  "-latex", Arg.Unit (fun () -> set_generator
-       (Odoc_gen.Latex (module Odoc_latex.Generator : Odoc_latex.Latex_generator))),
+  "-latex", Arg.Unit (fun () ->
+    match !current_generator with
+      Some (Odoc_gen.Latex _) -> ()
+    | _ -> set_generator
+             (Odoc_gen.Latex (module Odoc_latex.Generator : Odoc_latex.Latex_generator))),
     M.generate_latex ;
-  "-texi", Arg.Unit (fun () -> set_generator
-       (Odoc_gen.Texi (module Odoc_texi.Generator : Odoc_texi.Texi_generator))),
+  "-texi", Arg.Unit (fun () ->
+    match !current_generator with
+      Some (Odoc_gen.Texi _) -> ()
+    | _ -> set_generator
+             (Odoc_gen.Texi (module Odoc_texi.Generator : Odoc_texi.Texi_generator))),
     M.generate_texinfo ;
-  "-man", Arg.Unit (fun () -> set_generator
-       (Odoc_gen.Man (module Odoc_man.Generator : Odoc_man.Man_generator))),
+  "-man", Arg.Unit (fun () ->
+    match !current_generator with
+      Some (Odoc_gen.Man _) -> ()
+    | _ -> set_generator
+             (Odoc_gen.Man (module Odoc_man.Generator : Odoc_man.Man_generator))),
     M.generate_man ;
-  "-dot", Arg.Unit (fun () -> set_generator
-       (Odoc_gen.Dot (module Odoc_dot.Generator : Odoc_dot.Dot_generator))),
+  "-dot", Arg.Unit (fun () ->
+    match !current_generator with
+      Some (Odoc_gen.Dot _) -> ()
+    | _ -> set_generator
+             (Odoc_gen.Dot (module Odoc_dot.Generator : Odoc_dot.Dot_generator))),
     M.generate_dot ;
   "-customdir", Arg.Unit (fun () -> Printf.printf "%s\n" Odoc_config.custom_generators_path; exit 0),
   M.display_custom_generators_dir ;
-  "-i", Arg.String (fun s -> ()), M.add_load_dir ;
-  "-g", Arg.String (fun s -> ()), M.load_file ^
+  "-i", Arg.String (fun _ -> ()), M.add_load_dir ;
+  "-g", Arg.String (fun _ -> ()), M.load_file ^
   "\n\n *** HTML options ***\n";
 
 (* html only options *)
@@ -338,27 +411,11 @@ let add_option o =
   options := iter !options
 
 let parse () =
-  let anonymous f =
-    let sf =
-      if Filename.check_suffix f "ml" then
-        Odoc_global.Impl_file f
-      else
-        if Filename.check_suffix f "mli" then
-          Odoc_global.Intf_file f
-        else
-          if Filename.check_suffix f "txt" then
-            Odoc_global.Text_file f
-          else
-            failwith (Odoc_messages.unknown_extension f)
-    in
-    Odoc_global.files := !Odoc_global.files @ [sf]
-  in
   if modified_options () then append_last_doc "\n";
   let options = !options @ !help_options in
-  let _ = Arg.parse options
+  Arg.parse (Arg.align ~limit:13 options)
       anonymous
-      (M.usage^M.options_are)
-  in
+      (M.usage^M.options_are);
   (* we sort the hidden modules by name, to be sure that for example,
      A.B is before A, so we will match against A.B before A in
      Odoc_name.hide_modules.*)

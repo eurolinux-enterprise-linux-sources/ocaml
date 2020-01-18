@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2006 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2006 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Symbol table information for .cmo and .cma files *)
 
@@ -27,7 +30,11 @@ type compilation_unit =
     mutable cu_pos: int;                (* Absolute position in file *)
     cu_codesize: int;                   (* Size of code block *)
     cu_reloc: (reloc_info * int) list;  (* Relocation information *)
-    cu_imports: (string * Digest.t) list; (* Names and CRC of intfs imported *)
+    cu_imports:
+      (string * Digest.t option) list; (* Names and CRC of intfs imported *)
+    cu_required_globals: Ident.t list; (* Compilation units whose initialization
+                                          side effects must occur before this
+                                          one. *)
     cu_primitives: string list;         (* Primitives declared inside *)
     mutable cu_force_link: bool;        (* Must be linked even if unref'ed *)
     mutable cu_debug: int;              (* Position of debugging info, or 0 *)
@@ -56,3 +63,9 @@ type library =
      ...
      object code for last library member
      library descriptor *)
+
+(* Tables for numbering objects *)
+
+type 'a numtable =
+  { num_cnt: int;               (* The next number *)
+    num_tbl: ('a, int) Tbl.t }  (* The table of already numbered objects *)

@@ -1,15 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*          Jerome Vouillon, projet Cristal, INRIA Rocquencourt        *)
-(*          OCaml port by John Malecki and Xavier Leroy                *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*           Jerome Vouillon, projet Cristal, INRIA Rocquencourt          *)
+(*           OCaml port by John Malecki and Xavier Leroy                  *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Low-level communication with the debuggee *)
 
@@ -187,10 +190,10 @@ let set_trap_barrier pos =
 let value_size = if 1 lsl 31 = 0 then 4 else 8
 
 let input_remote_value ic =
-  Misc.input_bytes ic value_size
+  really_input_string ic value_size
 
 let output_remote_value ic v =
-  output ic v 0 value_size
+  output_substring ic v 0 value_size
 
 exception Marshalling_error
 
@@ -213,14 +216,16 @@ module Remote_value =
     | Local obj -> Obj.is_block obj
     | Remote v -> Obj.is_block (Array.unsafe_get (Obj.magic v : Obj.t array) 0)
 
-    let tag = function
-    | Local obj -> Obj.tag obj
-    | Remote v ->
-        output_char !conn.io_out 'H';
-        output_remote_value !conn.io_out v;
-        flush !conn.io_out;
-        let header = input_binary_int !conn.io_in in
-        header land 0xFF
+    let tag obj =
+      if not (is_block obj) then Obj.int_tag
+      else match obj with
+      | Local obj -> Obj.tag obj
+      | Remote v ->
+          output_char !conn.io_out 'H';
+          output_remote_value !conn.io_out v;
+          flush !conn.io_out;
+          let header = input_binary_int !conn.io_in in
+          header land 0xFF
 
     let size = function
     | Local obj -> Obj.size obj
@@ -244,7 +249,7 @@ module Remote_value =
           if input_byte !conn.io_in = 0 then
             Remote(input_remote_value !conn.io_in)
           else begin
-            let buf = Misc.input_bytes !conn.io_in 8 in
+            let buf = really_input_string !conn.io_in 8 in
             let floatbuf = float n (* force allocation of a new float *) in
             String.unsafe_blit buf 0 (Obj.magic floatbuf) 0 8;
             Local(Obj.repr floatbuf)
@@ -277,7 +282,7 @@ module Remote_value =
       Remote(input_remote_value !conn.io_in)
 
     let closure_code = function
-    | Local obj -> assert false
+    | Local _ -> assert false
     | Remote v ->
         output_char !conn.io_out 'C';
         output_remote_value !conn.io_out v;
@@ -290,5 +295,15 @@ module Remote_value =
       | (Remote v1, Remote v2) -> v1 = v2
            (* string equality -> equality of remote pointers *)
       | (_, _) -> false
+
+    let pointer rv =
+      match rv with
+      | Remote v ->
+        let bytes = ref [] in
+        String.iter (fun c -> bytes := c :: !bytes) v;
+        let obytes = if Sys.big_endian then List.rev !bytes else !bytes in
+        let to_hex c = Printf.sprintf "%02x" (Char.code c) in
+        String.concat "" (List.map to_hex obytes)
+      | Local _ -> ""
 
   end

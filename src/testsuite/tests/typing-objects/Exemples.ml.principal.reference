@@ -24,8 +24,8 @@
 #   val get_x : < get_x : 'a; .. > -> 'a = <fun>
 # val set_x : < set_x : 'a; .. > -> 'a = <fun>
 # - : int list = [10; 5]
-#           Characters 7-96:
-  ......ref x_init = object
+#           Characters 1-96:
+  class ref x_init = object
     val mutable x = x_init
     method get = x
     method set y = x <- y
@@ -84,7 +84,7 @@ Error: This expression has type point but an expression was expected of type
 # val c'' : color_point color_circle = <obj>
 #   - : color_point circle = <obj>
 # Characters 0-21:
-  (c'' :> point circle);;                 (* Echec *)
+  (c'' :> point circle);;                 (* Fail *)
   ^^^^^^^^^^^^^^^^^^^^^
 Error: Type
          color_point color_circle =
@@ -183,15 +183,15 @@ and ['a] cons :
 #   val p1 : printable_color_point lst = <obj>
 # ((3, red)::(10, red)::[])- : unit = ()
 #           class virtual comparable :
-  unit -> object ('a) method virtual leq : 'a -> bool end
+  unit -> object ('a) method virtual cmp : 'a -> int end
 #             class int_comparable :
-  int -> object ('a) val x : int method leq : 'a -> bool method x : int end
+  int -> object ('a) val x : int method cmp : 'a -> int method x : int end
 #           class int_comparable2 :
   int ->
   object ('a)
     val x : int
     val mutable x' : int
-    method leq : 'a -> bool
+    method cmp : 'a -> int
     method set_x : int -> unit
     method x : int
   end
@@ -208,23 +208,23 @@ and ['a] cons :
 # - : unit = ()
 #   val c2 : int_comparable2 = <obj>
 # Characters 6-28:
-  l#add (c2 :> int_comparable);;      (* Echec : 'a comp2 n'est un sous-type *)
+  l#add (c2 :> int_comparable);;      (* Fail : 'a comp2 is not a subtype *)
         ^^^^^^^^^^^^^^^^^^^^^^
 Error: Type
          int_comparable2 =
-           < leq : int_comparable2 -> bool; set_x : int -> unit; x : int >
+           < cmp : int_comparable2 -> int; set_x : int -> unit; x : int >
        is not a subtype of
-         int_comparable = < leq : int_comparable -> bool; x : int > 
-       Type int_comparable = < leq : int_comparable -> bool; x : int >
+         int_comparable = < cmp : int_comparable -> int; x : int > 
+       Type int_comparable = < cmp : int_comparable -> int; x : int >
        is not a subtype of
          int_comparable2 =
-           < leq : int_comparable2 -> bool; set_x : int -> unit; x : int > 
+           < cmp : int_comparable2 -> int; set_x : int -> unit; x : int > 
 # - : unit = ()
 #             class int_comparable3 :
   int ->
   object
     val mutable x : int
-    method leq : int_comparable -> bool
+    method cmp : int_comparable -> int
     method setx : int -> unit
     method x : int
   end
@@ -235,11 +235,11 @@ Error: Type
                            ^^
 Error: This expression has type
          int_comparable3 =
-           < leq : int_comparable -> bool; setx : int -> unit; x : int >
+           < cmp : int_comparable -> int; setx : int -> unit; x : int >
        but an expression was expected of type
-         #comparable as 'a = < leq : 'a -> bool; .. >
-       Type int_comparable = < leq : int_comparable -> bool; x : int >
-       is not compatible with type 'a = < leq : 'a -> bool; .. > 
+         #comparable as 'a = < cmp : 'a -> int; .. >
+       Type int_comparable = < cmp : int_comparable -> int; x : int >
+       is not compatible with type 'a = < cmp : 'a -> int; .. > 
        The first object type has no method setx
 #   val sort : (#comparable as 'a) list -> 'a list = <fun>
 #     Characters 13-66:

@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                             OCamldoc                                *)
-(*                                                                     *)
-(*            Maxence Guesdon, projet Cristal, INRIA Rocquencourt      *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Maxence Guesdon, projet Cristal, INRIA Rocquencourt        *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Global variables. *)
 
@@ -20,13 +23,6 @@ type source_file =
 
 (** The include_dirs in the OCaml compiler. *)
 val include_dirs : string list ref
-
-(** Optional preprocessor command to pass to ocaml compiler. *)
-val preprocessor : string option ref (* -pp *)
-val ppx : string list ref (* -ppx *)
-
-(** Recursive types flag to passe to ocaml compiler. *)
-val recursive_types : bool ref
 
 (** The merge options to be used. *)
 val merge_options : Odoc_types.merge_option list ref
@@ -66,11 +62,15 @@ val hidden_modules : string list ref
 
 (** The files to be analysed. *)
 val files : source_file list ref
+
 (** A counter for errors. *)
 val errors : int ref
 
 (** Indicate if a warning is an error. *)
 val warn_error : bool ref
+
+(** Show code fragments that could be transformed into a cross-reference. *)
+val show_missed_crossref: bool ref
 
 (** Print the given warning, adding it to the list of {!errors}
 if {!warn_error} is [true]. *)

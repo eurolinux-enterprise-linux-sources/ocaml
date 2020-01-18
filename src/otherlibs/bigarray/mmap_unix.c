@@ -1,29 +1,33 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*         Manuel Serrano and Xavier Leroy, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 2000 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*          Manuel Serrano and Xavier Leroy, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 2000 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
+
+#define CAML_INTERNALS
 
 /* Needed (under Linux at least) to get pwrite's prototype in unistd.h.
    Must be defined before the first system .h is included. */
-#define _XOPEN_SOURCE 500
+#define _XOPEN_SOURCE 600
 
 #include <stddef.h>
 #include <string.h>
 #include "bigarray.h"
-#include "custom.h"
-#include "fail.h"
-#include "io.h"
-#include "mlvalues.h"
-#include "sys.h"
-#include "signals.h"
+#include "caml/custom.h"
+#include "caml/fail.h"
+#include "caml/io.h"
+#include "caml/mlvalues.h"
+#include "caml/sys.h"
+#include "caml/signals.h"
 
 extern int caml_ba_element_size[];  /* from bigarray_stubs.c */
 
@@ -101,7 +105,7 @@ CAMLprim value caml_ba_map_file(value vfd, value vkind, value vlayout,
   void * addr;
 
   fd = Int_val(vfd);
-  flags = Int_val(vkind) | Int_val(vlayout);
+  flags = Caml_ba_kind_val(vkind) | Caml_ba_layout_val(vlayout);
   startpos = File_offset_val(vstart);
   num_dims = Wosize_val(vdim);
   major_dim = flags & CAML_BA_FORTRAN_LAYOUT ? num_dims - 1 : 0;
@@ -153,7 +157,7 @@ CAMLprim value caml_ba_map_file(value vfd, value vkind, value vlayout,
     }
   }
   /* Determine offset so that the mapping starts at the given file pos */
-  page = getpagesize();
+  page = sysconf(_SC_PAGESIZE);
   delta = (uintnat) startpos % page;
   /* Do the mmap */
   shared = Bool_val(vshared) ? MAP_SHARED : MAP_PRIVATE;
@@ -189,7 +193,7 @@ CAMLprim value caml_ba_map_file_bytecode(value * argv, int argn)
 void caml_ba_unmap_file(void * addr, uintnat len)
 {
 #if defined(HAS_MMAP)
-  uintnat page = getpagesize();
+  uintnat page = sysconf(_SC_PAGESIZE);
   uintnat delta = (uintnat) addr % page;
   if (len == 0) return;         /* PR#5463 */
   addr = (void *)((uintnat)addr - delta);

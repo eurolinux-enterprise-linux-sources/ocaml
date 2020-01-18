@@ -1,25 +1,24 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Transformation of Mach code into a list of pseudo-instructions. *)
 
 open Reg
 open Mach
 
-type label = int
-
-let label_counter = ref 99
-
-let new_label() = incr label_counter; !label_counter
+type label = Cmm.label
 
 type instruction =
   { mutable desc: instruction_desc;
@@ -42,18 +41,20 @@ and instruction_desc =
   | Lsetuptrap of label
   | Lpushtrap
   | Lpoptrap
-  | Lraise
+  | Lraise of Cmm.raise_kind
 
 let has_fallthrough = function
-  | Lreturn | Lbranch _ | Lswitch _ | Lraise
-  | Lop Itailcall_ind | Lop (Itailcall_imm _) -> false
+  | Lreturn | Lbranch _ | Lswitch _ | Lraise _
+  | Lop Itailcall_ind _ | Lop (Itailcall_imm _) -> false
   | _ -> true
 
 type fundecl =
   { fun_name: string;
     fun_body: instruction;
     fun_fast: bool;
-    fun_dbg : Debuginfo.t }
+    fun_dbg : Debuginfo.t;
+    fun_spacetime_shape : Mach.spacetime_shape option;
+  }
 
 (* Invert a test *)
 
@@ -110,7 +111,7 @@ let get_label n = match n.desc with
     Lbranch lbl -> (lbl, n)
   | Llabel lbl -> (lbl, n)
   | Lend -> (-1, n)
-  | _ -> let lbl = new_label() in (lbl, cons_instr (Llabel lbl) n)
+  | _ -> let lbl = Cmm.new_label() in (lbl, cons_instr (Llabel lbl) n)
 
 (* Check the fallthrough label *)
 let check_label n = match n.desc with
@@ -126,9 +127,9 @@ let rec discard_dead_code n =
   match n.desc with
     Lend -> n
   | Llabel _ -> n
-(* Do not discard Lpoptrap or Istackoffset instructions,
+(* Do not discard Lpoptrap/Lpushtrap or Istackoffset instructions,
    as this may cause a stack imbalance later during assembler generation. *)
-  | Lpoptrap -> n
+  | Lpoptrap | Lpushtrap -> n
   | Lop(Istackoffset _) -> n
   | _ -> discard_dead_code n.next
 
@@ -148,27 +149,40 @@ let add_branch lbl n =
   else
     discard_dead_code n
 
-(* Current labels for exit handler *)
+let try_depth = ref 0
+
+(* Association list: exit handler -> (handler label, try-nesting factor) *)
 
 let exit_label = ref []
 
-let find_exit_label k =
+let find_exit_label_try_depth k =
   try
     List.assoc k !exit_label
   with
   | Not_found -> Misc.fatal_error "Linearize.find_exit_label"
 
+let find_exit_label k =
+  let (label, t) = find_exit_label_try_depth k in
+  assert(t = !try_depth);
+  label
+
 let is_next_catch n = match !exit_label with
-| (n0,_)::_  when n0=n -> true
+| (n0,(_,t))::_  when n0=n && t = !try_depth -> true
 | _ -> false
+
+let local_exit k =
+  snd (find_exit_label_try_depth k) = !try_depth
 
 (* Linearize an instruction [i]: add it in front of the continuation [n] *)
 
 let rec linear i n =
   match i.Mach.desc with
     Iend -> n
-  | Iop(Itailcall_ind | Itailcall_imm _ as op) ->
-      copy_instr (Lop op) i (discard_dead_code n)
+  | Iop(Itailcall_ind _ | Itailcall_imm _ as op) ->
+      if not Config.spacetime then
+        copy_instr (Lop op) i (discard_dead_code n)
+      else
+        copy_instr (Lop op) i (linear i.Mach.next n)
   | Iop(Imove | Ireload | Ispill)
     when i.Mach.arg.(0).loc = i.Mach.res.(0).loc ->
       linear i.Mach.next n
@@ -187,15 +201,15 @@ let rec linear i n =
       | _, Iend, Lbranch lbl ->
           copy_instr (Lcondbranch(invert_test test, lbl)) i (linear ifso n1)
       | Iexit nfail1, Iexit nfail2, _
-            when is_next_catch nfail1 ->
+            when is_next_catch nfail1 && local_exit nfail2 ->
           let lbl2 = find_exit_label nfail2 in
           copy_instr
             (Lcondbranch (invert_test test, lbl2)) i (linear ifso n1)
-      | Iexit nfail, _, _ ->
+      | Iexit nfail, _, _ when local_exit nfail ->
           let n2 = linear ifnot n1
           and lbl = find_exit_label nfail in
           copy_instr (Lcondbranch(test, lbl)) i n2
-      | _,  Iexit nfail, _ ->
+      | _,  Iexit nfail, _ when local_exit nfail ->
           let n2 = linear ifso n1 in
           let lbl = find_exit_label nfail in
           copy_instr (Lcondbranch(invert_test test, lbl)) i n2
@@ -214,7 +228,7 @@ let rec linear i n =
             (linear ifso (add_branch lbl_end nelse))
       end
   | Iswitch(index, cases) ->
-      let lbl_cases = Array.create (Array.length cases) 0 in
+      let lbl_cases = Array.make (Array.length cases) 0 in
       let (lbl_end, n1) = get_label(linear i.Mach.next n) in
       let n2 = ref (discard_dead_code n1) in
       for i = Array.length cases - 1 downto 0 do
@@ -235,33 +249,69 @@ let rec linear i n =
       end else
         copy_instr (Lswitch(Array.map (fun n -> lbl_cases.(n)) index)) i !n2
   | Iloop body ->
-      let lbl_head = new_label() in
+      let lbl_head = Cmm.new_label() in
       let n1 = linear i.Mach.next n in
       let n2 = linear body (cons_instr (Lbranch lbl_head) n1) in
       cons_instr (Llabel lbl_head) n2
-  | Icatch(io, body, handler) ->
+  | Icatch(_rec_flag, handlers, body) ->
       let (lbl_end, n1) = get_label(linear i.Mach.next n) in
-      let (lbl_handler, n2) = get_label(linear handler n1) in
-      exit_label := (io, lbl_handler) :: !exit_label ;
+      (* CR mshinwell for pchambart:
+         1. rename "io"
+         2. Make sure the test cases cover the "Iend" cases too *)
+      let labels_at_entry_to_handlers = List.map (fun (_nfail, handler) ->
+          match handler.Mach.desc with
+          | Iend -> lbl_end
+          | _ -> Cmm.new_label ())
+          handlers in
+      let exit_label_add = List.map2
+          (fun (nfail, _) lbl -> (nfail, (lbl, !try_depth)))
+          handlers labels_at_entry_to_handlers in
+      let previous_exit_label = !exit_label in
+      exit_label := exit_label_add @ !exit_label;
+      let n2 = List.fold_left2 (fun n (_nfail, handler) lbl_handler ->
+          match handler.Mach.desc with
+          | Iend -> n
+          | _ -> cons_instr (Llabel lbl_handler) (linear handler n))
+          n1 handlers labels_at_entry_to_handlers
+      in
       let n3 = linear body (add_branch lbl_end n2) in
-      exit_label := List.tl !exit_label;
+      exit_label := previous_exit_label;
       n3
   | Iexit nfail ->
-      let n1 = linear i.Mach.next n in
-      let lbl = find_exit_label nfail in
-      add_branch lbl n1
+      let lbl, t = find_exit_label_try_depth nfail in
+      (* We need to re-insert dummy pushtrap (which won't be executed),
+         so as to preserve stack offset during assembler generation.
+         It would make sense to have a special pseudo-instruction
+         only to inform the later pass about this stack offset
+         (corresponding to N traps).
+       *)
+      let rec loop i tt =
+        if t = tt then i
+        else loop (cons_instr Lpushtrap i) (tt - 1)
+      in
+      let n1 = loop (linear i.Mach.next n) !try_depth in
+      let rec loop i tt =
+        if t = tt then i
+        else loop (cons_instr Lpoptrap i) (tt - 1)
+      in
+      loop (add_branch lbl n1) !try_depth
   | Itrywith(body, handler) ->
       let (lbl_join, n1) = get_label (linear i.Mach.next n) in
+      incr try_depth;
+      assert (i.Mach.arg = [| |] || Config.spacetime);
       let (lbl_body, n2) =
-        get_label (cons_instr Lpushtrap
+        get_label (instr_cons Lpushtrap i.Mach.arg [| |]
                     (linear body (cons_instr Lpoptrap n1))) in
-      cons_instr (Lsetuptrap lbl_body)
+      decr try_depth;
+      instr_cons (Lsetuptrap lbl_body) i.Mach.arg [| |]
         (linear handler (add_branch lbl_join n2))
-  | Iraise ->
-      copy_instr Lraise i (discard_dead_code n)
+  | Iraise k ->
+      copy_instr (Lraise k) i (discard_dead_code n)
 
 let fundecl f =
   { fun_name = f.Mach.fun_name;
     fun_body = linear f.Mach.fun_body end_instr;
     fun_fast = f.Mach.fun_fast;
-    fun_dbg  = f.Mach.fun_dbg }
+    fun_dbg  = f.Mach.fun_dbg;
+    fun_spacetime_shape = f.Mach.fun_spacetime_shape;
+  }

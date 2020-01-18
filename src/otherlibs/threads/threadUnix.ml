@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../../LICENSE.  *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Module [ThreadUnix]: thread-compatible system calls *)
 
@@ -22,6 +24,8 @@ let system = Unix.system
 let read = Unix.read
 let write = Unix.write
 let single_write = Unix.single_write
+let write_substring = Unix.write_substring
+let single_write_substring = Unix.single_write_substring
 let select = Unix.select
 let pipe = Unix.pipe
 let open_process_in = Unix.open_process_in
@@ -36,7 +40,9 @@ let connect = Unix.connect
 let recv = Unix.recv
 let recvfrom = Unix.recvfrom
 let send = Unix.send
+let send_substring = Unix.send_substring
 let sendto = Unix.sendto
+let sendto_substring = Unix.sendto_substring
 let open_connection = Unix.open_connection
 let establish_server = Unix.establish_server
 
@@ -57,3 +63,6 @@ let rec timed_write fd buff ofs len timeout =
                     timed_write fd buff ofs len timeout
        end
   else raise (Unix_error(ETIMEDOUT, "timed_write", ""))
+
+let timed_write_substring fd buff ofs len timeout =
+  timed_write fd (Bytes.unsafe_of_string buff) ofs len timeout

@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Machine-specific command-line options *)
 
@@ -31,11 +34,12 @@ type addressing_mode =
 
 type specific_operation =
     Ilea of addressing_mode             (* Lea gives scaled adds *)
-  | Istore_int of nativeint * addressing_mode (* Store an integer constant *)
-  | Istore_symbol of string * addressing_mode (* Store a symbol *)
+  | Istore_int of nativeint * addressing_mode * bool
+                                        (* Store an integer constant *)
+  | Istore_symbol of string * addressing_mode * bool (* Store a symbol *)
   | Ioffset_loc of int * addressing_mode (* Add a constant to a location *)
   | Ipush                               (* Push regs on stack *)
-  | Ipush_int of nativeint            (* Push an integer constant *)
+  | Ipush_int of nativeint              (* Push an integer constant *)
   | Ipush_symbol of string              (* Push a symbol *)
   | Ipush_load of addressing_mode       (* Load a scalar and push *)
   | Ipush_load_float of addressing_mode (* Load a float and push *)
@@ -47,6 +51,8 @@ type specific_operation =
 
 and float_operation =
     Ifloatadd | Ifloatsub | Ifloatsubrev | Ifloatmul | Ifloatdiv | Ifloatdivrev
+
+let spacetime_node_hole_pointer_is_live_before _specific_op = false
 
 (* Sizes, endianness *)
 
@@ -75,11 +81,11 @@ let offset_addressing addr delta =
   | Iindexed2scaled(scale, n) -> Iindexed2scaled(scale, n + delta)
 
 let num_args_addressing = function
-    Ibased(s, n) -> 0
-  | Iindexed n -> 1
-  | Iindexed2 n -> 2
-  | Iscaled(scale, n) -> 1
-  | Iindexed2scaled(scale, n) -> 2
+    Ibased _ -> 0
+  | Iindexed _ -> 1
+  | Iindexed2 _ -> 2
+  | Iscaled _ -> 1
+  | Iindexed2scaled _ -> 2
 
 (* Printing operations and addressing modes *)
 
@@ -105,11 +111,14 @@ let print_addressing printreg addr ppf arg =
 let print_specific_operation printreg op ppf arg =
   match op with
   | Ilea addr -> print_addressing printreg addr ppf arg
-  | Istore_int(n, addr) ->
-      fprintf ppf "[%a] := %s" (print_addressing printreg addr) arg
-                               (Nativeint.to_string n)
-  | Istore_symbol(lbl, addr) ->
-      fprintf ppf "[%a] := \"%s\"" (print_addressing printreg addr) arg lbl
+  | Istore_int(n, addr, is_assign) ->
+      fprintf ppf "[%a] := %nd %s"
+         (print_addressing printreg addr) arg n
+         (if is_assign then "(assign)" else "(init)")
+  | Istore_symbol(lbl, addr, is_assign) ->
+      fprintf ppf "[%a] := \"%s\" %s"
+         (print_addressing printreg addr) arg lbl
+         (if is_assign then "(assign)" else "(init)")
   | Ioffset_loc(n, addr) ->
       fprintf ppf "[%a] +:= %i" (print_addressing printreg addr) arg n
   | Ipush ->
@@ -152,5 +161,7 @@ let print_specific_operation printreg op ppf arg =
 
 let stack_alignment =
   match Config.system with
-  | "macosx" -> 16
-  | _ -> 4
+  | "win32" -> 4     (* MSVC *)
+  | _ -> 16
+(* PR#6038: GCC and Clang seem to require 16-byte alignment nowadays,
+   even if only MacOS X's ABI formally requires it *)

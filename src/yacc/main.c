@@ -1,14 +1,17 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the Q Public License version 1.0.               */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 /* Based on public-domain code from Berkeley Yacc */
 
@@ -27,15 +30,18 @@ char rflag;
 char tflag;
 char vflag;
 char qflag;
+char eflag;
 char sflag;
 char big_endian;
 
 char *file_prefix = 0;
 char *myname = "yacc";
-#ifdef NO_UNIX
-char temp_form[] = "yacc.X";
-#else
 char temp_form[] = "yacc.XXXXXXX";
+
+#ifdef NO_UNIX
+char dirsep = '\\';
+#else
+char dirsep = '/';
 #endif
 
 int lineno;
@@ -53,11 +59,7 @@ char *text_file_name;
 char *union_file_name;
 char *verbose_file_name;
 
-#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__) || (__APPLE__)
-#define HAVE_MKSTEMP
-#endif
-
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
 int action_fd = -1, entry_fd = -1, text_fd = -1, union_fd = -1;
 #endif
 
@@ -99,15 +101,17 @@ char  *rassoc;
 short **derives;
 char *nullable;
 
-#if !defined(HAVE_MKSTEMP)
+#if !defined(HAS_MKSTEMP)
 extern char *mktemp(char *);
 #endif
+#ifndef NO_UNIX
 extern char *getenv(const char *);
+#endif
 
 
 void done(int k)
 {
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
     if (action_fd != -1)
        unlink(action_file_name);
     if (entry_fd != -1)
@@ -157,7 +161,7 @@ void set_signals(void)
 
 void usage(void)
 {
-    fprintf(stderr, "usage: %s [-v] [-q] [-b file_prefix] filename\n",
+    fprintf(stderr, "usage: %s [-v] [--strict] [-q] [-b file_prefix] filename\n",
             myname);
     exit(1);
 }
@@ -181,6 +185,10 @@ void getargs(int argc, char **argv)
             return;
 
         case '-':
+            if (!strcmp (argv[i], "--strict")){
+              eflag = 1;
+              goto end_of_option;
+            }
             ++i;
             goto no_more_options;
 
@@ -277,16 +285,16 @@ void create_file_names(void)
     char *tmpdir;
 
 #ifdef NO_UNIX
-    len = 0;
-    i = sizeof(temp_form);
+    tmpdir = getenv("TEMP");
+    if (tmpdir == 0) tmpdir = ".";
 #else
     tmpdir = getenv("TMPDIR");
     if (tmpdir == 0) tmpdir = "/tmp";
+#endif
     len = strlen(tmpdir);
     i = len + sizeof(temp_form);
-    if (len && tmpdir[len-1] != '/')
+    if (len && tmpdir[len-1] != dirsep)
         ++i;
-#endif
 
     action_file_name = MALLOC(i);
     if (action_file_name == 0) no_space();
@@ -297,21 +305,19 @@ void create_file_names(void)
     union_file_name = MALLOC(i);
     if (union_file_name == 0) no_space();
 
-#ifndef NO_UNIX
     strcpy(action_file_name, tmpdir);
     strcpy(entry_file_name, tmpdir);
     strcpy(text_file_name, tmpdir);
     strcpy(union_file_name, tmpdir);
 
-    if (len && tmpdir[len - 1] != '/')
+    if (len && tmpdir[len - 1] != dirsep)
     {
-        action_file_name[len] = '/';
-        entry_file_name[len] = '/';
-        text_file_name[len] = '/';
-        union_file_name[len] = '/';
+        action_file_name[len] = dirsep;
+        entry_file_name[len] = dirsep;
+        text_file_name[len] = dirsep;
+        union_file_name[len] = dirsep;
         ++len;
     }
-#endif
 
     strcpy(action_file_name + len, temp_form);
     strcpy(entry_file_name + len, temp_form);
@@ -323,8 +329,7 @@ void create_file_names(void)
     text_file_name[len + 5] = 't';
     union_file_name[len + 5] = 'u';
 
-#ifndef NO_UNIX
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
     action_fd = mkstemp(action_file_name);
     if (action_fd == -1)
         open_error(action_file_name);
@@ -342,7 +347,6 @@ void create_file_names(void)
     mktemp(entry_file_name);
     mktemp(text_file_name);
     mktemp(union_file_name);
-#endif
 #endif
 
     len = strlen(file_prefix);
@@ -384,7 +388,7 @@ void open_files(void)
             open_error(input_file_name);
     }
 
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
     action_file = fdopen(action_fd, "w");
 #else
     action_file = fopen(action_file_name, "w");
@@ -392,7 +396,7 @@ void open_files(void)
     if (action_file == 0)
         open_error(action_file_name);
 
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
     entry_file = fdopen(entry_fd, "w");
 #else
     entry_file = fopen(entry_file_name, "w");
@@ -400,7 +404,7 @@ void open_files(void)
     if (entry_file == 0)
         open_error(entry_file_name);
 
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
     text_file = fdopen(text_fd, "w");
 #else
     text_file = fopen(text_file_name, "w");
@@ -420,7 +424,7 @@ void open_files(void)
         defines_file = fopen(defines_file_name, "w");
         if (defines_file == 0)
             open_error(defines_file_name);
-#ifdef HAVE_MKSTEMP
+#ifdef HAS_MKSTEMP
         union_file = fdopen(union_fd, "w");
 #else
         union_file = fopen(union_file_name, "w");
@@ -458,6 +462,7 @@ int main(int argc, char **argv)
     lalr();
     make_parser();
     verbose();
+    if (eflag && SRtotal + RRtotal > 0) forbidden_conflicts();
     output();
     done(0);
     /*NOTREACHED*/

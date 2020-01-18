@@ -45,7 +45,7 @@ module OK = struct
   open M
   open N
   let f (r:M.t) = r.x
-end;; 
+end;;
 
 module M = struct
   type t = {x:int}
@@ -166,4 +166,15 @@ module P6235 = struct
   type v = { loc : string; x : int; }
   type u = [ `Key of t ]
   let f (u : u) = match u with `Key {loc} -> loc
+end;;
+
+(* Remove interaction between branches *)
+
+module P6235' = struct
+  type t = { loc : string; }
+  type v = { loc : string; x : int; }
+  type u = [ `Key of t ]
+  let f = function
+    | (_ : u) when false -> ""
+    |`Key {loc} -> loc
 end;;

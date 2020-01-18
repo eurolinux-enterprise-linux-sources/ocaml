@@ -1,26 +1,29 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Luc Maranget, projet Moscova, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2002 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Luc Maranget, projet Moscova, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2002 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 type 'a t = {mutable next : int ; mutable data : 'a array}
 
 let default_size = 32
 ;;
 
-let create x = {next = 0 ; data = Array.create default_size x}
+let create x = {next = 0 ; data = Array.make default_size x}
 and reset t = t.next <- 0
 ;;
 
 let incr_table table new_size =
-  let t = Array.create new_size table.data.(0) in
+  let t = Array.make new_size table.data.(0) in
   Array.blit table.data 0 t 0 (Array.length table.data) ;
   table.data <- t
 

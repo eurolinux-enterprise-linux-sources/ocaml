@@ -1,15 +1,3 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
-
 (* Good test for loops. Best compiled with -unsafe. *)
 
 let rec qsort lo hi (a : int array) =
@@ -63,8 +51,8 @@ let random() =
 exception Failed
 
 let test_sort sort_fun size =
-  let a = Array.create size 0 in
-  let check = Array.create 4096 0 in
+  let a = Array.make size 0 in
+  let check = Array.make 4096 0 in
   for i = 0 to size-1 do
     let n = random() in a.(i) <- n; check.(n) <- check.(n)+1
   done;
@@ -84,7 +72,7 @@ let test_sort sort_fun size =
 
 
 let main () =
-  test_sort qsort 500000;
-  test_sort qsort2 500000
+  test_sort qsort 50000;
+  test_sort qsort2 50000
 
 let _ = main(); exit 0

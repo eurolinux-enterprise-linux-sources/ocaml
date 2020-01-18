@@ -1,15 +1,17 @@
-;***********************************************************************
-;*                                                                     *
-;*                                OCaml                                *
-;*                                                                     *
-;*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *
-;*                                                                     *
-;*  Copyright 1996 Institut National de Recherche en Informatique et   *
-;*  en Automatique.  All rights reserved.  This file is distributed    *
-;*  under the terms of the GNU Library General Public License, with    *
-;*  the special exception on linking described in file ../LICENSE.     *
-;*                                                                     *
-;***********************************************************************
+;**************************************************************************
+;*                                                                        *
+;*                                 OCaml                                  *
+;*                                                                        *
+;*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *
+;*                                                                        *
+;*   Copyright 1996 Institut National de Recherche en Informatique et     *
+;*     en Automatique.                                                    *
+;*                                                                        *
+;*   All rights reserved.  This file is distributed under the terms of    *
+;*   the GNU Lesser General Public License version 2.1, with the          *
+;*   special exception on linking described in the file LICENSE.          *
+;*                                                                        *
+;**************************************************************************
 
 ; Asm part of the runtime system, Intel 386 processor, Intel syntax
 
@@ -27,6 +29,7 @@
         EXTERN  _caml_last_return_address: DWORD
         EXTERN  _caml_gc_regs: DWORD
         EXTERN  _caml_exception_pointer: DWORD
+        EXTERN  _caml_backtrace_pos: DWORD
         EXTERN  _caml_backtrace_active: DWORD
         EXTERN  _caml_stash_backtrace: PROC
 
@@ -225,12 +228,12 @@ L110:
         ALIGN  4
 _caml_raise_exception:
         test    _caml_backtrace_active, 1
-        jne     L111
+        jne     L112
         mov     eax, [esp+4]
         mov     esp, _caml_exception_pointer
         pop     _caml_exception_pointer
         ret
-L111:
+L112:
         mov     esi, [esp+4]            ; Save exception bucket in esi
         push    _caml_exception_pointer ; arg 4: SP of handler
         push    _caml_bottom_of_stack   ; arg 3: SP of raise

@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*    Valerie Menissier-Morain, projet Cristal, INRIA Rocquencourt     *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../../LICENSE.  *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*     Valerie Menissier-Morain, projet Cristal, INRIA Rocquencourt       *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Int_misc
 open Nat
@@ -438,7 +440,8 @@ let approx_ratio_fix n r =
                    r.denominator)) in
        (* Round up and add 1 in front if needed *)
        let s2 =
-         if round_futur_last_digit s1 0 (String.length s1)
+         if round_futur_last_digit (Bytes.unsafe_of_string s1) 0
+                                   (String.length s1)
          then "1" ^ s1
          else s1 in
        let l2 = String.length s2 - 1 in
@@ -447,18 +450,18 @@ let approx_ratio_fix n r =
             if s2 without last digit is      yy with <= n digits:
                <sign> 0 . 0yy *)
        if l2 > n then begin
-         let s = String.make (l2 + 2) '0' in
-         String.set s 0  (if sign_r = -1 then '-' else '+');
+         let s = Bytes.make (l2 + 2) '0' in
+         Bytes.set s 0  (if sign_r = -1 then '-' else '+');
          String.blit s2 0 s 1 (l2 - n);
-         String.set s (l2 - n + 1) '.';
+         Bytes.set s (l2 - n + 1) '.';
          String.blit s2 (l2 - n) s (l2 - n + 2) n;
-         s
+         Bytes.unsafe_to_string s
        end else begin
-         let s = String.make (n + 3) '0' in
-         String.set s 0  (if sign_r = -1 then '-' else '+');
-         String.set s 2 '.';
+         let s = Bytes.make (n + 3) '0' in
+         Bytes.set s 0  (if sign_r = -1 then '-' else '+');
+         Bytes.set s 2 '.';
          String.blit s2 0 s (n + 3 - l2) l2;
-         s
+         Bytes.unsafe_to_string s
        end
      end else begin
        (* Dubious; what is this code supposed to do? *)
@@ -468,10 +471,10 @@ let approx_ratio_fix n r =
                     (base_power_big_int
                       10 (-n) r.denominator)) in
        let len = succ (String.length s) in
-       let s' = String.make len '0' in
-        String.set s' 0 (if sign_r = -1 then '-' else '+');
+       let s' = Bytes.make len '0' in
+        Bytes.set s' 0 (if sign_r = -1 then '-' else '+');
         String.blit s 0 s' 1 (pred len);
-        s'
+        Bytes.unsafe_to_string s'
      end
 
 (* Number of digits of the decimal representation of an int *)
@@ -488,11 +491,8 @@ let approx_ratio_exp n r =
  else
   let sign_r = sign_ratio r
   and i = ref (n + 3) in
-   if sign_r = 0
-     then
-      let s = String.make (n + 5) '0' in
-       (String.blit "+0." 0 s 0 3);
-       (String.blit "e0" 0 s !i 2); s
+   if sign_r = 0 then
+     String.concat "" ["+0."; String.make n '0'; "e0"]
    else
      let msd = msd_ratio (abs_ratio r) in
      let k = n - msd in
@@ -508,28 +508,29 @@ let approx_ratio_exp n r =
                                 10 k (abs_big_int r.numerator))
                                r.denominator) in
        string_of_nat nat) in
-     if (round_futur_last_digit s 0 (String.length s))
+     if round_futur_last_digit (Bytes.unsafe_of_string s) 0
+                               (String.length s)
       then
        let m = num_decimal_digits_int (succ msd) in
-       let str = String.make (n + m + 4) '0' in
+       let str = Bytes.make (n + m + 4) '0' in
          (String.blit (if sign_r = -1 then "-1." else "+1.") 0 str 0 3);
-         String.set str !i ('e');
+         Bytes.set str !i ('e');
          incr i;
          (if m = 0
-          then String.set str !i '0'
+          then Bytes.set str !i '0'
           else String.blit (string_of_int (succ msd)) 0 str !i m);
-         str
+         Bytes.unsafe_to_string str
      else
       let m = num_decimal_digits_int (succ msd)
       and p = n + 3 in
-      let str = String.make (succ (m + p)) '0' in
+      let str = Bytes.make (succ (m + p)) '0' in
         (String.blit (if sign_r = -1 then "-0." else "+0.") 0 str 0 3);
         (String.blit s 0 str 3 n);
-        String.set str p 'e';
+        Bytes.set str p 'e';
         (if m = 0
-          then String.set str (succ p) '0'
+          then Bytes.set str (succ p) '0'
           else (String.blit (string_of_int (succ msd)) 0 str (succ p) m));
-        str
+        Bytes.unsafe_to_string str
 
 (* String approximation of a rational with a fixed number of significant *)
 (* digits printed                                                        *)
@@ -547,7 +548,9 @@ let string_of_ratio r =
     else string_of_big_int r.numerator ^ "/" ^ string_of_big_int r.denominator
 
 (* XL: j'ai puissamment simplifie "ratio_of_string" en virant la notation
-   scientifique. *)
+   scientifique.
+  | I have strongly simplified "ratio_of_string" by deleting scientific notation
+*)
 
 let ratio_of_string s =
   try
@@ -562,9 +565,50 @@ let ratio_of_string s =
 (* Coercion with type float *)
 
 let float_of_ratio r =
-  float_of_string (float_of_rational_string r)
+  let p = r.numerator and q = r.denominator in
+  (* Special cases 0/0, 0/q and p/0 *)
+  if sign_big_int q = 0 then begin
+    match sign_big_int p with
+    | 0 -> nan
+    | 1 -> infinity
+    | -1 -> neg_infinity
+    | _ -> assert false
+    end
+  else if sign_big_int p = 0 then 0.0
+  else begin
+    let np = num_bits_big_int p and nq = num_bits_big_int q in
+    if np <= 53 && nq <= 53 then
+      (* p and q convert to floats exactly; use FP division to get the
+         correctly-rounded result. *)
+      Int64.to_float (int64_of_big_int p)
+         /. Int64.to_float (int64_of_big_int q)
+    else begin
+      let ap = abs_big_int p in
+      (* |p| is in [2^(np-1), 2^np)
+         q is in [2^(nq-1), 2^nq)
+         hence |p|/q is in (2^(np-nq-1), 2^(np-nq+1)).
+         We define n such that |p|/q*2^n is in [2^54, 2^56).
+         >= 2^54 so that the round to odd technique applies.
+         < 2^56 so that the integral part is representable as an int64. *)
+      let n = 55 - (np - nq) in
+      (* Scaling |p|/q by 2^n *)
+      let (p', q') =
+        if n >= 0
+        then (shift_left_big_int ap n, q)
+        else (ap, shift_left_big_int q (-n)) in
+      (* Euclidean division of p' by q' *)
+      let (quo, rem) = quomod_big_int p' q' in
+      (* quo is the integral part of |p|/q*2^n
+         rem/q' is the fractional part. *)
+      (* Round quo to float *)
+      let f = round_big_int_to_float quo (sign_big_int rem = 0) in
+      (* Apply exponent *)
+      let f = ldexp f (-n) in
+      (* Apply sign *)
+      if sign_big_int p < 0 then -. f else f
+    end
+  end
 
-(* XL: suppression de ratio_of_float *)
 
 let power_ratio_positive_int r n =
   create_ratio (power_big_int_positive_int (r.numerator) n)

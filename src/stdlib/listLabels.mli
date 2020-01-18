@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../LICENSE.     *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** List operations.
 
@@ -31,6 +33,25 @@ val hd : 'a list -> 'a
 (** Return the first element of the given list. Raise
    [Failure "hd"] if the list is empty. *)
 
+val compare_lengths : 'a list -> 'b list -> int
+(** Compare the lengths of two lists. [compare_lengths l1 l2] is
+   equivalent to [compare (length l1) (length l2)], except that
+   the computation stops after itering on the shortest list.
+   @since 4.05.0
+ *)
+
+val compare_length_with : 'a list -> len:int -> int
+(** Compare the length of a list to an integer. [compare_length_with l n] is
+   equivalent to [compare (length l) n], except that
+   the computation stops after at most [n] iterations on the list.
+   @since 4.05.0
+*)
+
+val cons : 'a -> 'a list -> 'a list
+(** [cons x xs] is [x :: xs]
+    @since 4.05.0
+*)
+
 val tl : 'a list -> 'a list
 (** Return the given list without its first element. Raise
    [Failure "tl"] if the list is empty. *)
@@ -40,6 +61,14 @@ val nth : 'a list -> int -> 'a
    The first element (head of the list) is at position 0.
    Raise [Failure "nth"] if the list is too short.
    Raise [Invalid_argument "List.nth"] if [n] is negative. *)
+
+val nth_opt: 'a list -> int -> 'a option
+(** Return the [n]-th element of the given list.
+    The first element (head of the list) is at position 0.
+    Return [None] if the list is too short.
+    Raise [Invalid_argument "List.nth"] if [n] is negative.
+    @since 4.05
+*)
 
 val rev : 'a list -> 'a list
 (** List reversal. *)
@@ -51,7 +80,7 @@ val append : 'a list -> 'a list -> 'a list
 
 val rev_append : 'a list -> 'a list -> 'a list
 (** [List.rev_append l1 l2] reverses [l1] and concatenates it to [l2].
-   This is equivalent to {!ListLabels.rev}[ l1 @ l2], but [rev_append] is
+   This is equivalent to {!List.rev}[ l1 @ l2], but [rev_append] is
    tail-recursive and more efficient. *)
 
 val concat : 'a list list -> 'a list
@@ -94,7 +123,7 @@ val mapi : f:(int -> 'a -> 'b) -> 'a list -> 'b list
 
 val rev_map : f:('a -> 'b) -> 'a list -> 'b list
 (** [List.rev_map f l] gives the same result as
-   {!ListLabels.rev}[ (]{!ListLabels.map}[ f l)], but is tail-recursive and
+   {!List.rev}[ (]{!List.map}[ f l)], but is tail-recursive and
    more efficient. *)
 
 val fold_left : f:('a -> 'b -> 'a) -> init:'a -> 'b list -> 'a
@@ -112,33 +141,33 @@ val fold_right : f:('a -> 'b -> 'b) -> 'a list -> init:'b -> 'b
 val iter2 : f:('a -> 'b -> unit) -> 'a list -> 'b list -> unit
 (** [List.iter2 f [a1; ...; an] [b1; ...; bn]] calls in turn
    [f a1 b1; ...; f an bn].
-   Raise [Invalid_argument] if the two lists have
-   different lengths. *)
+   Raise [Invalid_argument] if the two lists are determined
+   to have different lengths. *)
 
 val map2 : f:('a -> 'b -> 'c) -> 'a list -> 'b list -> 'c list
 (** [List.map2 f [a1; ...; an] [b1; ...; bn]] is
    [[f a1 b1; ...; f an bn]].
-   Raise [Invalid_argument] if the two lists have
-   different lengths.  Not tail-recursive. *)
+   Raise [Invalid_argument] if the two lists are determined
+   to have different lengths.  Not tail-recursive. *)
 
 val rev_map2 : f:('a -> 'b -> 'c) -> 'a list -> 'b list -> 'c list
 (** [List.rev_map2 f l1 l2] gives the same result as
-   {!ListLabels.rev}[ (]{!ListLabels.map2}[ f l1 l2)], but is tail-recursive and
+   {!List.rev}[ (]{!List.map2}[ f l1 l2)], but is tail-recursive and
    more efficient. *)
 
 val fold_left2 :
   f:('a -> 'b -> 'c -> 'a) -> init:'a -> 'b list -> 'c list -> 'a
 (** [List.fold_left2 f a [b1; ...; bn] [c1; ...; cn]] is
    [f (... (f (f a b1 c1) b2 c2) ...) bn cn].
-   Raise [Invalid_argument] if the two lists have
-   different lengths. *)
+   Raise [Invalid_argument] if the two lists are determined
+   to have different lengths. *)
 
 val fold_right2 :
   f:('a -> 'b -> 'c -> 'c) -> 'a list -> 'b list -> init:'c -> 'c
 (** [List.fold_right2 f [a1; ...; an] [b1; ...; bn] c] is
    [f a1 b1 (f a2 b2 (... (f an bn c) ...))].
-   Raise [Invalid_argument] if the two lists have
-   different lengths.  Not tail-recursive. *)
+   Raise [Invalid_argument] if the two lists are determined
+   to have different lengths.  Not tail-recursive. *)
 
 
 (** {6 List scanning} *)
@@ -155,21 +184,21 @@ val exists : f:('a -> bool) -> 'a list -> bool
    [(p a1) || (p a2) || ... || (p an)]. *)
 
 val for_all2 : f:('a -> 'b -> bool) -> 'a list -> 'b list -> bool
-(** Same as {!ListLabels.for_all}, but for a two-argument predicate.
-   Raise [Invalid_argument] if the two lists have
-   different lengths. *)
+(** Same as {!List.for_all}, but for a two-argument predicate.
+   Raise [Invalid_argument] if the two lists are determined
+   to have different lengths. *)
 
 val exists2 : f:('a -> 'b -> bool) -> 'a list -> 'b list -> bool
-(** Same as {!ListLabels.exists}, but for a two-argument predicate.
-   Raise [Invalid_argument] if the two lists have
-   different lengths. *)
+(** Same as {!List.exists}, but for a two-argument predicate.
+   Raise [Invalid_argument] if the two lists are determined
+   to have different lengths. *)
 
 val mem : 'a -> set:'a list -> bool
 (** [mem a l] is true if and only if [a] is equal
    to an element of [l]. *)
 
 val memq : 'a -> set:'a list -> bool
-(** Same as {!ListLabels.mem}, but uses physical equality instead of structural
+(** Same as {!List.mem}, but uses physical equality instead of structural
    equality to compare list elements. *)
 
 
@@ -182,13 +211,20 @@ val find : f:('a -> bool) -> 'a list -> 'a
    Raise [Not_found] if there is no value that satisfies [p] in the
    list [l]. *)
 
+val find_opt: f:('a -> bool) -> 'a list -> 'a option
+(** [find p l] returns the first element of the list [l]
+   that satisfies the predicate [p].
+   Returns [None] if there is no value that satisfies [p] in the
+   list [l].
+   @since 4.05 *)
+
 val filter : f:('a -> bool) -> 'a list -> 'a list
 (** [filter p l] returns all the elements of the list [l]
    that satisfy the predicate [p].  The order of the elements
    in the input list is preserved.  *)
 
 val find_all : f:('a -> bool) -> 'a list -> 'a list
-(** [find_all] is another name for {!ListLabels.filter}. *)
+(** [find_all] is another name for {!List.filter}. *)
 
 val partition : f:('a -> bool) -> 'a list -> 'a list * 'a list
 (** [partition p l] returns a pair of lists [(l1, l2)], where
@@ -209,16 +245,31 @@ val assoc : 'a -> ('a * 'b) list -> 'b
    Raise [Not_found] if there is no value associated with [a] in the
    list [l]. *)
 
+val assoc_opt: 'a -> ('a * 'b) list -> 'b option
+(** [assoc_opt a l] returns the value associated with key [a] in the list of
+    pairs [l]. That is,
+    [assoc a [ ...; (a,b); ...] = b]
+    if [(a,b)] is the leftmost binding of [a] in list [l].
+    Returns [None] if there is no value associated with [a] in the
+    list [l].
+    @since 4.05
+*)
+
 val assq : 'a -> ('a * 'b) list -> 'b
-(** Same as {!ListLabels.assoc}, but uses physical equality instead of
+(** Same as {!List.assoc}, but uses physical equality instead of
    structural equality to compare keys. *)
 
+val assq_opt: 'a -> ('a * 'b) list -> 'b option
+(** Same as {!List.assoc_opt}, but uses physical equality instead of
+   structural equality to compare keys.
+   @since 4.05.0 *)
+
 val mem_assoc : 'a -> map:('a * 'b) list -> bool
-(** Same as {!ListLabels.assoc}, but simply return true if a binding exists,
+(** Same as {!List.assoc}, but simply return true if a binding exists,
    and false if no bindings exist for the given key. *)
 
 val mem_assq : 'a -> map:('a * 'b) list -> bool
-(** Same as {!ListLabels.mem_assoc}, but uses physical equality instead of
+(** Same as {!List.mem_assoc}, but uses physical equality instead of
    structural equality to compare keys. *)
 
 val remove_assoc : 'a -> ('a * 'b) list -> ('a * 'b) list
@@ -227,7 +278,7 @@ val remove_assoc : 'a -> ('a * 'b) list -> ('a * 'b) list
    Not tail-recursive. *)
 
 val remove_assq : 'a -> ('a * 'b) list -> ('a * 'b) list
-(** Same as {!ListLabels.remove_assoc}, but uses physical equality instead
+(** Same as {!List.remove_assoc}, but uses physical equality instead
    of structural equality to compare keys.  Not tail-recursive. *)
 
 
@@ -268,7 +319,7 @@ val sort : cmp:('a -> 'a -> int) -> 'a list -> 'a list
 *)
 
 val stable_sort : cmp:('a -> 'a -> int) -> 'a list -> 'a list
-(** Same as {!ListLabels.sort}, but the sorting algorithm is guaranteed to
+(** Same as {!List.sort}, but the sorting algorithm is guaranteed to
    be stable (i.e. elements that compare equal are kept in their
    original order) .
 
@@ -277,8 +328,12 @@ val stable_sort : cmp:('a -> 'a -> int) -> 'a list -> 'a list
 *)
 
 val fast_sort : cmp:('a -> 'a -> int) -> 'a list -> 'a list
-(** Same as {!List.sort} or {!List.stable_sort}, whichever is faster
-    on typical input. *)
+(** Same as {!List.sort} or {!List.stable_sort}, whichever is
+    faster on typical input. *)
+
+val sort_uniq : cmp:('a -> 'a -> int) -> 'a list -> 'a list
+(** Same as {!List.sort}, but also remove duplicates.
+    @since 4.03.0 *)
 
 val merge : cmp:('a -> 'a -> int) -> 'a list -> 'a list -> 'a list
 (** Merge two lists:

@@ -17,7 +17,8 @@ let both l =
     [ make_set compare; make_set (fun x y -> compare y x) ]
 
 let () =
-  print_endline (String.concat "  " (List.map (String.concat "/") (both ["abc";"xyz";"def"])))
+  print_endline (String.concat "  " (List.map (String.concat "/")
+                                              (both ["abc";"xyz";"def"])))
 
 
 (* Hiding the internal representation *)
@@ -133,17 +134,34 @@ end = struct
     | Pair p ->
         let module P = (val p : PAIR with type t = s) in
         let (x1, x2) = TypEq.apply P.eq x in
-        Printf.sprintf "(%s,%s)" (Print.to_string P.t1 x1) (Print.to_string P.t2 x2)
+        Printf.sprintf "(%s,%s)" (Print.to_string P.t1 x1)
+                       (Print.to_string P.t2 x2)
 end
 
 let () =
   print_endline (Print.to_string int 10);
   print_endline (Print.to_string (pair int (pair str int)) (123, ("A", 456)))
 
-(* PR#6194 *)
-module type S2 = sig val x : bool end;;
+
+(* #6262: first-class modules and module type aliases *)
+
+module type S1 = sig end
+module type S2 = S1
+
+let _f (x : (module S1)) : (module S2) = x
+
+module X = struct
+  module type S
+end
+module Y = struct include X end
+
+let _f (x : (module X.S)) : (module Y.S) = x
+
+(* PR#6194, main example *)
+module type S3 = sig val x : bool end;;
 let f = function
-  | Some (module M : S2) when M.x ->1
+  | Some (module M : S3) when M.x ->1
   | Some _ -> 2
-  | None -> 3;;       
+  | None -> 3
+;;
 print_endline (string_of_int (f (Some (module struct let x = false end))));;

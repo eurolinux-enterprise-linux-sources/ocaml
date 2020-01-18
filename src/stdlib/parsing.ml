@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../LICENSE.     *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* The parsing engine *)
 
@@ -84,10 +86,10 @@ external set_trace: bool -> bool
     = "caml_set_parser_trace"
 
 let env =
-  { s_stack = Array.create 100 0;
-    v_stack = Array.create 100 (Obj.repr ());
-    symb_start_stack = Array.create 100 dummy_pos;
-    symb_end_stack = Array.create 100 dummy_pos;
+  { s_stack = Array.make 100 0;
+    v_stack = Array.make 100 (Obj.repr ());
+    symb_start_stack = Array.make 100 dummy_pos;
+    symb_end_stack = Array.make 100 dummy_pos;
     stacksize = 100;
     stackbase = 0;
     curr_char = 0;
@@ -104,10 +106,10 @@ let env =
 let grow_stacks() =
   let oldsize = env.stacksize in
   let newsize = oldsize * 2 in
-  let new_s = Array.create newsize 0
-  and new_v = Array.create newsize (Obj.repr ())
-  and new_start = Array.create newsize dummy_pos
-  and new_end = Array.create newsize dummy_pos in
+  let new_s = Array.make newsize 0
+  and new_v = Array.make newsize (Obj.repr ())
+  and new_start = Array.make newsize dummy_pos
+  and new_end = Array.make newsize dummy_pos in
     Array.blit env.s_stack 0 new_s 0 oldsize;
     env.s_stack <- new_s;
     Array.blit env.v_stack 0 new_v 0 oldsize;
@@ -122,7 +124,7 @@ let clear_parser() =
   Array.fill env.v_stack 0 env.stacksize (Obj.repr ());
   env.lval <- Obj.repr ()
 
-let current_lookahead_fun = ref (fun (x : Obj.t) -> false)
+let current_lookahead_fun = ref (fun (_ : Obj.t) -> false)
 
 let yyparse tables start lexer lexbuf =
   let rec loop cmd arg =
@@ -193,17 +195,17 @@ let symbol_start_pos () =
     end
   in
   loop env.rule_len
-;;
-let symbol_end_pos () = env.symb_end_stack.(env.asp);;
-let rhs_start_pos n = env.symb_start_stack.(env.asp - (env.rule_len - n));;
-let rhs_end_pos n = env.symb_end_stack.(env.asp - (env.rule_len - n));;
 
-let symbol_start () = (symbol_start_pos ()).pos_cnum;;
-let symbol_end () = (symbol_end_pos ()).pos_cnum;;
-let rhs_start n = (rhs_start_pos n).pos_cnum;;
-let rhs_end n = (rhs_end_pos n).pos_cnum;;
+let symbol_end_pos () = env.symb_end_stack.(env.asp)
+let rhs_start_pos n = env.symb_start_stack.(env.asp - (env.rule_len - n))
+let rhs_end_pos n = env.symb_end_stack.(env.asp - (env.rule_len - n))
+
+let symbol_start () = (symbol_start_pos ()).pos_cnum
+let symbol_end () = (symbol_end_pos ()).pos_cnum
+let rhs_start n = (rhs_start_pos n).pos_cnum
+let rhs_end n = (rhs_end_pos n).pos_cnum
 
 let is_current_lookahead tok =
   (!current_lookahead_fun)(Obj.repr tok)
 
-let parse_error (msg : string) = ()
+let parse_error (_ : string) = ()

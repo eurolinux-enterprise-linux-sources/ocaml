@@ -1,34 +1,39 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../LICENSE.     */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
+
+#define CAML_INTERNALS
 
 /* The bytecode interpreter */
 #include <stdio.h>
-#include "alloc.h"
-#include "backtrace.h"
-#include "callback.h"
-#include "debugger.h"
-#include "fail.h"
-#include "fix_code.h"
-#include "instrtrace.h"
-#include "instruct.h"
-#include "interp.h"
-#include "major_gc.h"
-#include "memory.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "prims.h"
-#include "signals.h"
-#include "stacks.h"
+#include "caml/alloc.h"
+#include "caml/backtrace.h"
+#include "caml/callback.h"
+#include "caml/debugger.h"
+#include "caml/fail.h"
+#include "caml/fix_code.h"
+#include "caml/instrtrace.h"
+#include "caml/instruct.h"
+#include "caml/interp.h"
+#include "caml/major_gc.h"
+#include "caml/memory.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/prims.h"
+#include "caml/signals.h"
+#include "caml/stacks.h"
+#include "caml/startup_aux.h"
 
 /* Registers for the abstract machine:
         pc         the code pointer
@@ -173,15 +178,13 @@ sp is a local copy of the global variable caml_extern_sp. */
 #define SP_REG asm("%r14")
 #define ACCU_REG asm("%r13")
 #endif
+#ifdef __aarch64__
+#define PC_REG asm("%x19")
+#define SP_REG asm("%x20")
+#define ACCU_REG asm("%x21")
+#define JUMPTBL_BASE_REG asm("%x22")
 #endif
-
-/* Division and modulus madness */
-
-#ifdef NONSTANDARD_DIV_MOD
-extern intnat caml_safe_div(intnat p, intnat q);
-extern intnat caml_safe_mod(intnat p, intnat q);
 #endif
-
 
 #ifdef DEBUG
 static intnat caml_bcodcount;
@@ -222,7 +225,7 @@ value caml_interprete(code_t prog, asize_t prog_size)
 
 #ifdef THREADED_CODE
   static void * jumptable[] = {
-#    include "jumptbl.h"
+#    include "caml/jumptbl.h"
   };
 #endif
 
@@ -273,9 +276,9 @@ value caml_interprete(code_t prog, asize_t prog_size)
 #ifdef DEBUG
     caml_bcodcount++;
     if (caml_icount-- == 0) caml_stop_here ();
-    if (caml_trace_flag>1) printf("\n##%ld\n", caml_bcodcount);
-    if (caml_trace_flag) caml_disasm_instr(pc);
-    if (caml_trace_flag>1) {
+    if (caml_trace_level>1) printf("\n##%ld\n", caml_bcodcount);
+    if (caml_trace_level>0) caml_disasm_instr(pc);
+    if (caml_trace_level>1) {
       printf("env=");
       caml_trace_value_file(env,prog,prog_size,stdout);
       putchar('\n');
@@ -525,10 +528,21 @@ value caml_interprete(code_t prog, asize_t prog_size)
       int nvars = *pc++;
       int i;
       if (nvars > 0) *--sp = accu;
-      Alloc_small(accu, 1 + nvars, Closure_tag);
+      if (nvars < Max_young_wosize) {
+        /* nvars + 1 <= Max_young_wosize, can allocate in minor heap */
+        Alloc_small(accu, 1 + nvars, Closure_tag);
+        for (i = 0; i < nvars; i++) Field(accu, i + 1) = sp[i];
+      } else {
+        /* PR#6385: must allocate in major heap */
+        /* caml_alloc_shr and caml_initialize never trigger a GC,
+           so no need to Setup_for_gc */
+        accu = caml_alloc_shr(1 + nvars, Closure_tag);
+        for (i = 0; i < nvars; i++) caml_initialize(&Field(accu, i + 1), sp[i]);
+      }
+      /* The code pointer is not in the heap, so no need to go through
+         caml_initialize. */
       Code_val(accu) = pc + *pc;
       pc++;
-      for (i = 0; i < nvars; i++) Field(accu, i + 1) = sp[i];
       sp += nvars;
       Next;
     }
@@ -536,15 +550,25 @@ value caml_interprete(code_t prog, asize_t prog_size)
     Instruct(CLOSUREREC): {
       int nfuncs = *pc++;
       int nvars = *pc++;
+      mlsize_t blksize = nfuncs * 2 - 1 + nvars;
       int i;
       value * p;
       if (nvars > 0) *--sp = accu;
-      Alloc_small(accu, nfuncs * 2 - 1 + nvars, Closure_tag);
-      p = &Field(accu, nfuncs * 2 - 1);
-      for (i = 0; i < nvars; i++) {
-        *p++ = sp[i];
+      if (blksize <= Max_young_wosize) {
+        Alloc_small(accu, blksize, Closure_tag);
+        p = &Field(accu, nfuncs * 2 - 1);
+        for (i = 0; i < nvars; i++, p++) *p = sp[i];
+      } else {
+        /* PR#6385: must allocate in major heap */
+        /* caml_alloc_shr and caml_initialize never trigger a GC,
+           so no need to Setup_for_gc */
+        accu = caml_alloc_shr(blksize, Closure_tag);
+        p = &Field(accu, nfuncs * 2 - 1);
+        for (i = 0; i < nvars; i++, p++) caml_initialize(p, sp[i]);
       }
       sp += nvars;
+      /* The code pointers and infix headers are not in the heap,
+         so no need to go through caml_initialize. */
       p = &Field(accu, 0);
       *p = (value) (pc + pc[0]);
       *--sp = accu;
@@ -774,7 +798,7 @@ value caml_interprete(code_t prog, asize_t prog_size)
       if (accu == Val_false) pc += *pc; else pc++;
       Next;
     Instruct(SWITCH): {
-      uint32 sizes = *pc++;
+      uint32_t sizes = *pc++;
       if (Is_block(accu)) {
         intnat index = Tag_val(accu);
         Assert ((uintnat) index < (sizes >> 16));
@@ -814,10 +838,20 @@ value caml_interprete(code_t prog, asize_t prog_size)
       sp += 4;
       Next;
 
+    Instruct(RAISE_NOTRACE):
+      if (caml_trapsp >= caml_trap_barrier) caml_debugger(TRAP_BARRIER);
+      goto raise_notrace;
+
+    Instruct(RERAISE):
+      if (caml_trapsp >= caml_trap_barrier) caml_debugger(TRAP_BARRIER);
+      if (caml_backtrace_active) caml_stash_backtrace(accu, pc, sp, 1);
+      goto raise_notrace;
+
     Instruct(RAISE):
     raise_exception:
       if (caml_trapsp >= caml_trap_barrier) caml_debugger(TRAP_BARRIER);
-      if (caml_backtrace_active) caml_stash_backtrace(accu, pc, sp);
+      if (caml_backtrace_active) caml_stash_backtrace(accu, pc, sp, 0);
+    raise_notrace:
       if ((char *) caml_trapsp
           >= (char *) caml_stack_high - initial_sp_offset) {
         caml_external_raise = initial_external_raise;
@@ -946,21 +980,13 @@ value caml_interprete(code_t prog, asize_t prog_size)
     Instruct(DIVINT): {
       intnat divisor = Long_val(*sp++);
       if (divisor == 0) { Setup_for_c_call; caml_raise_zero_divide(); }
-#ifdef NONSTANDARD_DIV_MOD
-      accu = Val_long(caml_safe_div(Long_val(accu), divisor));
-#else
       accu = Val_long(Long_val(accu) / divisor);
-#endif
       Next;
     }
     Instruct(MODINT): {
       intnat divisor = Long_val(*sp++);
       if (divisor == 0) { Setup_for_c_call; caml_raise_zero_divide(); }
-#ifdef NONSTANDARD_DIV_MOD
-      accu = Val_long(caml_safe_mod(Long_val(accu), divisor));
-#else
       accu = Val_long(Long_val(accu) % divisor);
-#endif
       Next;
     }
     Instruct(ANDINT):

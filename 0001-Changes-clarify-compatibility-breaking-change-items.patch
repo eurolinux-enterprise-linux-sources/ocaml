@@ -1,0 +1,36 @@
+From 5bd96201dbd70c387c5af4b510d0de4abc0cfd7d Mon Sep 17 00:00:00 2001
+From: Gabriel Scherer <gabriel.scherer@gmail.com>
+Date: Wed, 12 Jul 2017 11:57:22 -0400
+Subject: [PATCH 01/12] Changes: clarify compatibility-breaking change items
+
+---
+ Changes | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/Changes b/Changes
+index cc59f635e..10642f19d 100644
+--- a/Changes
++++ b/Changes
+@@ -64,6 +64,9 @@ OCaml 4.05.0 (13 Jul 2017):
+ 
+ * MPR#7414, GPR#929: Soundness bug with non-generalized type variables and
+   functors.
++  (compatibility: some code using module-global mutable state will
++   fail at compile-time and is fixed by adding extra annotations;
++   see the Mantis and Github discussions.)
+   (Jacques Garrigue, report by Leo White)
+ 
+ ### Compiler user-interface and warnings:
+@@ -567,6 +570,9 @@ The complete list of changes is listed below.
+   (Mark Shinwell, Leo White, review by Xavier Leroy)
+ 
+ * GPR#1088: Gc.minor_words now returns accurate numbers.
++  (compatibility: the .mli declaration of `Gc.minor_words`
++   and `Gc.get_minor_free` changed, which may break libraries
++   re-exporting these values.)
+   (Stephen Dolan, review by Pierre Chambart and Xavier Leroy)
+ 
+ OCaml 4.04.2 (23 Jun 2017):
+-- 
+2.13.2
+

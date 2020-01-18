@@ -1,15 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*                  Benedikt Meurer, University of Siegen              *)
-(*                                                                     *)
-(*    Copyright 1998 Institut National de Recherche en Informatique    *)
-(*    et en Automatique. Copyright 2012 Benedikt Meurer. All rights    *)
-(*    reserved.  This file is distributed  under the terms of the Q    *)
-(*    Public License version 1.0.                                      *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*                 Benedikt Meurer, University of Siegen                  *)
+(*                                                                        *)
+(*   Copyright 1998 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*   Copyright 2012 Benedikt Meurer.                                      *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Specific operations for the ARM processor *)
 
@@ -21,8 +24,8 @@ type fpu = Soft | VFPv2 | VFPv3_D16 | VFPv3
 
 let abi =
   match Config.system with
-    "linux_eabi"   -> EABI
-  | "linux_eabihf" -> EABI_HF
+    "linux_eabi" | "freebsd" -> EABI
+  | "linux_eabihf" | "netbsd" -> EABI_HF
   | _ -> assert false
 
 let string_of_arch = function
@@ -56,25 +59,25 @@ let (arch, fpu, thumb) =
     end in
   (ref def_arch, ref def_fpu, ref def_thumb)
 
-let pic_code = ref false
-
 let farch spec =
-  arch := (match spec with
+  arch := begin match spec with
              "armv4" when abi <> EABI_HF   -> ARMv4
            | "armv5" when abi <> EABI_HF   -> ARMv5
            | "armv5te" when abi <> EABI_HF -> ARMv5TE
            | "armv6"                       -> ARMv6
            | "armv6t2"                     -> ARMv6T2
            | "armv7"                       -> ARMv7
-           | spec -> raise (Arg.Bad spec))
+           | spec -> raise (Arg.Bad ("wrong '-farch' option: " ^ spec))
+  end
 
 let ffpu spec =
-  fpu := (match spec with
+  fpu := begin match spec with
             "soft" when abi <> EABI_HF     -> Soft
           | "vfpv2" when abi = EABI_HF     -> VFPv2
           | "vfpv3-d16" when abi = EABI_HF -> VFPv3_D16
           | "vfpv3" when abi = EABI_HF     -> VFPv3
-          | spec -> raise (Arg.Bad spec))
+          | spec -> raise (Arg.Bad ("wrong '-ffpu' option: " ^ spec))
+  end
 
 let command_line_options =
   [ "-farch", Arg.String farch,
@@ -83,9 +86,9 @@ let command_line_options =
     "-ffpu", Arg.String ffpu,
       "<fpu>  Select the floating-point hardware"
       ^ " (default: " ^ (string_of_fpu !fpu) ^ ")";
-    "-fPIC", Arg.Set pic_code,
+    "-fPIC", Arg.Set Clflags.pic_code,
       " Generate position-independent machine code";
-    "-fno-PIC", Arg.Clear pic_code,
+    "-fno-PIC", Arg.Clear Clflags.pic_code,
       " Generate position-dependent machine code";
     "-fthumb", Arg.Set thumb,
       " Enable Thumb/Thumb-2 code generation"
@@ -107,9 +110,10 @@ type addressing_mode =
 (* Specific operations *)
 
 type specific_operation =
-    Ishiftarith of arith_operation * int
-  | Ishiftcheckbound of int
+    Ishiftarith of arith_operation * shift_operation * int
+  | Ishiftcheckbound of shift_operation * int
   | Irevsubimm of int
+  | Imulhadd      (* multiply high and add *)
   | Imuladd       (* multiply and add *)
   | Imulsub       (* multiply and subtract *)
   | Inegmulf      (* floating-point negate and multiply *)
@@ -124,6 +128,16 @@ and arith_operation =
     Ishiftadd
   | Ishiftsub
   | Ishiftsubrev
+  | Ishiftand
+  | Ishiftor
+  | Ishiftxor
+
+and shift_operation =
+    Ishiftlogicalleft
+  | Ishiftlogicalright
+  | Ishiftarithmeticright
+
+let spacetime_node_hole_pointer_is_live_before _specific_op = false
 
 (* Sizes, endianness *)
 
@@ -145,7 +159,7 @@ let identity_addressing = Iindexed 0
 
 let offset_addressing (Iindexed n) delta = Iindexed(n + delta)
 
-let num_args_addressing (Iindexed n) = 1
+let num_args_addressing (Iindexed _) = 1
 
 (* Printing operations and addressing modes *)
 
@@ -155,23 +169,41 @@ let print_addressing printreg addr ppf arg =
       printreg ppf arg.(0);
       if n <> 0 then fprintf ppf " + %i" n
 
+let shiftop_name = function
+  | Ishiftlogicalleft -> "<<"
+  | Ishiftlogicalright -> ">>u"
+  | Ishiftarithmeticright -> ">>s"
+
 let print_specific_operation printreg op ppf arg =
   match op with
-  | Ishiftarith(op, shift) ->
-      let op_name = function
-      | Ishiftadd -> "+"
-      | Ishiftsub -> "-"
-      | Ishiftsubrev -> "-rev" in
-      let shift_mark =
-       if shift >= 0
-       then sprintf "<< %i" shift
-       else sprintf ">> %i" (-shift) in
-      fprintf ppf "%a %s %a %s"
-       printreg arg.(0) (op_name op) printreg arg.(1) shift_mark
-  | Ishiftcheckbound n ->
-      fprintf ppf "check %a >> %i > %a" printreg arg.(0) n printreg arg.(1)
+    Ishiftarith(op, shiftop, amount) ->
+      let (op1_name, op2_name) = match op with
+          Ishiftadd -> ("", "+")
+        | Ishiftsub -> ("", "-")
+        | Ishiftsubrev -> ("-", "+")
+        | Ishiftand -> ("", "&")
+        | Ishiftor -> ("", "|")
+        | Ishiftxor -> ("", "^") in
+      fprintf ppf "%s%a %s (%a %s %i)"
+        op1_name
+        printreg arg.(0)
+        op2_name
+        printreg arg.(1)
+        (shiftop_name shiftop)
+        amount
+  | Ishiftcheckbound(shiftop, amount) ->
+      fprintf ppf "check (%a %s %i) > %a"
+        printreg arg.(0)
+        (shiftop_name shiftop)
+        amount
+        printreg arg.(1)
   | Irevsubimm n ->
       fprintf ppf "%i %s %a" n "-" printreg arg.(0)
+  | Imulhadd ->
+      fprintf ppf "%a *h %a) + %a"
+        printreg arg.(0)
+        printreg arg.(1)
+        printreg arg.(2)
   | Imuladd ->
       fprintf ppf "(%a * %a) + %a"
         printreg arg.(0)

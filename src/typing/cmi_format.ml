@@ -1,16 +1,23 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*                  Fabrice Le Fessant, INRIA Saclay                   *)
-(*                                                                     *)
-(*  Copyright 2012 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*                   Fabrice Le Fessant, INRIA Saclay                     *)
+(*                                                                        *)
+(*   Copyright 2012 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
-type pers_flags = Rectypes
+type pers_flags =
+  | Rectypes
+  | Deprecated of string
+  | Opaque
+  | Unsafe_string
 
 type error =
     Not_an_interface of string
@@ -22,7 +29,7 @@ exception Error of error
 type cmi_infos = {
     cmi_name : string;
     cmi_sign : Types.signature_item list;
-    cmi_crcs : (string * Digest.t) list;
+    cmi_crcs : (string * Digest.t option) list;
     cmi_flags : pers_flags list;
 }
 
@@ -40,7 +47,9 @@ let input_cmi ic =
 let read_cmi filename =
   let ic = open_in_bin filename in
   try
-    let buffer = Misc.input_bytes ic (String.length Config.cmi_magic_number) in
+    let buffer =
+      really_input_string ic (String.length Config.cmi_magic_number)
+    in
     if buffer <> Config.cmi_magic_number then begin
       close_in ic;
       let pre_len = String.length Config.cmi_magic_number - 3 in
@@ -70,7 +79,7 @@ let output_cmi filename oc cmi =
   output_value oc (cmi.cmi_name, cmi.cmi_sign);
   flush oc;
   let crc = Digest.file filename in
-  let crcs = (cmi.cmi_name, crc) :: cmi.cmi_crcs in
+  let crcs = (cmi.cmi_name, Some crc) :: cmi.cmi_crcs in
   output_value oc crcs;
   output_value oc cmi.cmi_flags;
   crc
@@ -91,3 +100,10 @@ let report_error ppf = function
   | Corrupted_interface filename ->
       fprintf ppf "Corrupted compiled interface@ %a"
         Location.print_filename filename
+
+let () =
+  Location.register_error_of_exn
+    (function
+      | Error err -> Some (Location.error_of_printer_file report_error err)
+      | _ -> None
+    )

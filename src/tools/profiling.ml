@@ -1,16 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*      Damien Doligez and Francois Rouaix, INRIA Rocquencourt         *)
-(*   Ported to Caml Special Light by John Malecki and Xavier Leroy     *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../LICENSE.     *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*       Damien Doligez and Francois Rouaix, INRIA Rocquencourt           *)
+(*    Ported to Caml Special Light by John Malecki and Xavier Leroy       *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Run-time library for profiled programs *)
 
@@ -37,7 +39,7 @@ let dump_counters () =
         then raise Bad_profile)
       !counters prevl;
     List.iter2
-      (fun (curname, (_,curcount)) (prevname, (_,prevcount)) ->
+      (fun (_curname, (_,curcount)) (_prevname, (_,prevcount)) ->
         for i = 0 to Array.length curcount - 1 do
           curcount.(i) <- curcount.(i) + prevcount.(i)
         done)

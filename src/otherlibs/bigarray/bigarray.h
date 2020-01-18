@@ -1,24 +1,26 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*         Manuel Serrano and Xavier Leroy, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 2000 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../../LICENSE.  */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*          Manuel Serrano and Xavier Leroy, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 2000 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 #ifndef CAML_BIGARRAY_H
 #define CAML_BIGARRAY_H
 
 #ifndef CAML_NAME_SPACE
-#include "compatibility.h"
+#include "caml/compatibility.h"
 #endif
-#include "config.h"
-#include "mlvalues.h"
+#include "caml/config.h"
+#include "caml/mlvalues.h"
 
 typedef signed char caml_ba_int8;
 typedef unsigned char caml_ba_uint8;
@@ -44,14 +46,24 @@ enum caml_ba_kind {
   CAML_BA_NATIVE_INT,       /* Platform-native long integers (32 or 64 bits) */
   CAML_BA_COMPLEX32,           /* Single-precision complex */
   CAML_BA_COMPLEX64,           /* Double-precision complex */
+  CAML_BA_CHAR,                /* Characters */
   CAML_BA_KIND_MASK = 0xFF     /* Mask for kind in flags field */
 };
+
+#define Caml_ba_kind_val(v) Int_val(v)
+
+#define Val_caml_ba_kind(k) Val_int(k)
 
 enum caml_ba_layout {
   CAML_BA_C_LAYOUT = 0,           /* Row major, indices start at 0 */
   CAML_BA_FORTRAN_LAYOUT = 0x100, /* Column major, indices start at 1 */
-  CAML_BA_LAYOUT_MASK = 0x100  /* Mask for layout in flags field */
+  CAML_BA_LAYOUT_MASK = 0x100,    /* Mask for layout in flags field */
+  CAML_BA_LAYOUT_SHIFT = 8        /* Bit offset of layout flag */
 };
+
+#define Caml_ba_layout_val(v) (Int_val(v) << CAML_BA_LAYOUT_SHIFT)
+
+#define Val_caml_ba_layout(l) Val_int(l >> CAML_BA_LAYOUT_SHIFT)
 
 enum caml_ba_managed {
   CAML_BA_EXTERNAL = 0,        /* Data is not allocated by OCaml */
@@ -96,10 +108,18 @@ struct caml_ba_array {
 #define CAMLBAextern CAMLextern
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 CAMLBAextern value
     caml_ba_alloc(int flags, int num_dims, void * data, intnat * dim);
 CAMLBAextern value caml_ba_alloc_dims(int flags, int num_dims, void * data,
                                  ... /*dimensions, with type intnat */);
 CAMLBAextern uintnat caml_ba_byte_size(struct caml_ba_array * b);
 
+#ifdef __cplusplus
+}
 #endif
+
+#endif /* CAML_BIGARRAY_H */

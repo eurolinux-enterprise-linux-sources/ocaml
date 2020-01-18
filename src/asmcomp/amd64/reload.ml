@@ -1,17 +1,19 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2000 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2000 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Cmm
-open Arch
 open Reg
 open Mach
 
@@ -32,7 +34,8 @@ open Mach
      Istore                             R       R
      Iintop(Icomp)              R       R       S
                             or  S       S       R
-     Iintop(Imul|Idiv|mod)      R       R       S
+     Iintop(Imul|Idiv|Imod)     R       R       S
+     Iintop(Imulh)              R       R       S
      Iintop(shift)              S       S       R
      Iintop(others)             R       R       S
                             or  S       S       R
@@ -62,7 +65,7 @@ inherit Reloadgen.reload_generic as super
 
 method! reload_operation op arg res =
   match op with
-  | Iintop(Iadd|Isub|Iand|Ior|Ixor|Icomp _|Icheckbound) ->
+  | Iintop(Iadd|Isub|Iand|Ior|Ixor|Icomp _|Icheckbound _) ->
       (* One of the two arguments can reside in the stack, but not both *)
       if stackp arg.(0) && stackp arg.(1)
       then ([|arg.(0); self#makereg arg.(1)|], res)
@@ -71,10 +74,10 @@ method! reload_operation op arg res =
       (* This add will be turned into a lea; args and results must be
          in registers *)
       super#reload_operation op arg res
-  | Iintop(Idiv | Imod | Ilsl | Ilsr | Iasr)
+  | Iintop(Imulh | Idiv | Imod | Ilsl | Ilsr | Iasr)
   | Iintop_imm(_, _) ->
       (* The argument(s) and results can be either in register or on stack *)
-      (* Note: Idiv, Imod: arg(0) and res(0) already forced in regs
+      (* Note: Imulh, Idiv, Imod: arg(0) and res(0) already forced in regs
                Ilsl, Ilsr, Iasr: arg(1) already forced in regs *)
       (arg, res)
   | Iintop(Imul) | Iaddf | Isubf | Imulf | Idivf ->
@@ -91,7 +94,7 @@ method! reload_operation op arg res =
       then (arg, res)
       else super#reload_operation op arg res
   | Iconst_symbol _ ->
-      if !pic_code || !Clflags.dlcode
+      if !Clflags.pic_code || !Clflags.dlcode || Arch.win64
       then super#reload_operation op arg res
       else (arg, res)
   | _ -> (* Other operations: all args and results in registers *)
@@ -99,7 +102,7 @@ method! reload_operation op arg res =
 
 method! reload_test tst arg =
   match tst with
-    Iinttest cmp ->
+    Iinttest _ ->
       (* One of the two arguments can reside on stack *)
       if stackp arg.(0) && stackp arg.(1)
       then [| self#makereg arg.(0); arg.(1) |]

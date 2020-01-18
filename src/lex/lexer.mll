@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* The lexical analyzer for lexer definitions. Bootstrapped! *)
 
@@ -30,6 +33,7 @@ let string_buff = Buffer.create 256
 let reset_string_buffer () = Buffer.clear string_buff
 
 let store_string_char c = Buffer.add_char string_buff c
+let store_string_chars s = Buffer.add_string string_buff s
 
 let get_stored_string () = Buffer.contents string_buff
 
@@ -58,8 +62,6 @@ let handle_lexical_error fn lexbuf =
     fn lexbuf
   with Lexical_error (msg, "", 0, 0) ->
     raise(Lexical_error(msg, file, line, column))
-
-let get_input_name () = Sys.argv.(Array.length Sys.argv - 1)
 
 let warning lexbuf msg =
   let p = Lexing.lexeme_start_p lexbuf in
@@ -140,6 +142,7 @@ rule main = parse
       | "eof" -> Teof
       | "let" -> Tlet
       | "as"  -> Tas
+      | "refill" -> Trefill
       | s -> Tident s }
   | '"'
     { reset_string_buffer();
@@ -185,7 +188,7 @@ rule main = parse
   | ')'  { Trparen }
   | '^'  { Tcaret }
   | '-'  { Tdash }
-  | '#'  { Tsharp }
+  | '#'  { Thash }
   | eof  { Tend }
   | _
     { raise_lexical_error lexbuf
@@ -197,7 +200,7 @@ rule main = parse
 and string = parse
     '"'
     { () }
-   | '\\' ("\010" | "\013" | "\013\010") ([' ' '\009'] * as spaces)
+   | '\\' ('\013'* '\010') ([' ' '\009'] * as spaces)
     { incr_loc lexbuf (String.length spaces);
       string lexbuf }
   | '\\' (backslash_escapes as c)
@@ -208,7 +211,7 @@ and string = parse
       if in_pattern () && v > 255 then
        warning lexbuf
         (Printf.sprintf
-          "illegal backslash escape in string: `\\%c%c%c'" c d u) ;
+          "illegal backslash escape in string: '\\%c%c%c'" c d u) ;
       store_string_char (Char.chr v);
       string lexbuf }
  | '\\' 'x' (['0'-'9' 'a'-'f' 'A'-'F'] as d) (['0'-'9' 'a'-'f' 'A'-'F'] as u)
@@ -217,14 +220,16 @@ and string = parse
   | '\\' (_ as c)
     {if in_pattern () then
        warning lexbuf
-        (Printf.sprintf "illegal backslash escape in string: `\\%c'" c) ;
+        (Printf.sprintf "illegal backslash escape in string: '\\%c'" c) ;
       store_string_char '\\' ;
       store_string_char c ;
       string lexbuf }
   | eof
     { raise(Lexical_error("unterminated string", "", 0, 0)) }
-  | '\010'
-    { store_string_char '\010';
+  | '\013'* '\010' as s
+    { if !comment_depth = 0 then
+        warning lexbuf (Printf.sprintf "unescaped newline in string") ;
+      store_string_chars s;
       incr_loc lexbuf 0;
       string lexbuf }
   | _ as c
@@ -296,5 +301,5 @@ and skip_char = parse
   | '\\' ['0'-'9'] ['0'-'9'] ['0'-'9'] "'"
   | '\\' 'x' ['0'-'9' 'a'-'f' 'A'-'F'] ['0'-'9' 'a'-'f' 'A'-'F'] "'"
      {()}
-(* A dieu va ! *)
+(* Perilous *)
   | "" {()}

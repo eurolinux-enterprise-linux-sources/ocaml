@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2002 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2002 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* "Package" a set of .cmo files into one .cmo file having the
    original compilation units as sub-modules. *)
@@ -16,6 +19,8 @@
 open Misc
 open Instruct
 open Cmo_format
+
+module StringSet = Set.Make(String)
 
 type error =
     Forward_reference of string * Ident.t
@@ -30,6 +35,7 @@ exception Error of error
 
 let relocs = ref ([] : (reloc_info * int) list)
 let events = ref ([] : debug_event list)
+let debug_dirs = ref StringSet.empty
 let primitives = ref ([] : string list)
 let force_link = ref false
 
@@ -93,26 +99,30 @@ type pack_member =
 
 let read_member_info file = (
   let name =
-    String.capitalize(Filename.basename(chop_extensions file)) in
+    String.capitalize_ascii(Filename.basename(chop_extensions file)) in
   let kind =
-    if Filename.check_suffix file ".cmo" then begin
-    let ic = open_in_bin file in
-    try
-      let buffer = input_bytes ic (String.length Config.cmo_magic_number) in
-      if buffer <> Config.cmo_magic_number then
-        raise(Error(Not_an_object_file file));
-      let compunit_pos = input_binary_int ic in
-      seek_in ic compunit_pos;
-      let compunit = (input_value ic : compilation_unit) in
-      if compunit.cu_name <> name
-      then raise(Error(Illegal_renaming(name, file, compunit.cu_name)));
-      close_in ic;
-      PM_impl compunit
-    with x ->
-      close_in ic;
-      raise x
-    end else
-      PM_intf in
+    (* PR#7479: make sure it is either a .cmi or a .cmo *)
+    if Filename.check_suffix file ".cmi" then
+      PM_intf
+    else begin
+      let ic = open_in_bin file in
+      try
+        let buffer =
+          really_input_string ic (String.length Config.cmo_magic_number)
+        in
+        if buffer <> Config.cmo_magic_number then
+          raise(Error(Not_an_object_file file));
+        let compunit_pos = input_binary_int ic in
+        seek_in ic compunit_pos;
+        let compunit = (input_value ic : compilation_unit) in
+        if compunit.cu_name <> name
+        then raise(Error(Illegal_renaming(name, file, compunit.cu_name)));
+        close_in ic;
+        PM_impl compunit
+      with x ->
+        close_in ic;
+        raise x
+    end in
   { pm_file = file; pm_name = name; pm_kind = kind }
 )
 
@@ -137,6 +147,10 @@ let rename_append_bytecode ppf packagename oc mapping defined ofs prefix subst
     if !Clflags.debug && compunit.cu_debug > 0 then begin
       seek_in ic compunit.cu_debug;
       List.iter (relocate_debug ofs prefix subst) (input_value ic);
+      debug_dirs := List.fold_left
+        (fun s e -> StringSet.add e s)
+        !debug_dirs
+        (input_value ic);
     end;
     close_in ic;
     compunit.cu_codesize
@@ -174,7 +188,7 @@ let rec rename_append_bytecode_list ppf packagename oc mapping defined ofs
 let build_global_target oc target_name members mapping pos coercion =
   let components =
     List.map2
-      (fun m (id1, id2) ->
+      (fun m (_id1, id2) ->
         match m.pm_kind with
         | PM_intf -> None
         | PM_impl _ -> Some id2)
@@ -182,6 +196,8 @@ let build_global_target oc target_name members mapping pos coercion =
   let lam =
     Translmod.transl_package
       components (Ident.create_persistent target_name) coercion in
+  if !Clflags.dump_lambda then
+    Format.printf "%a@." Printlambda.lambda lam;
   let instrs =
     Bytegen.compile_implementation target_name lam in
   let rel =
@@ -193,6 +209,24 @@ let build_global_target oc target_name members mapping pos coercion =
 let package_object_files ppf files targetfile targetname coercion =
   let members =
     map_left_right read_member_info files in
+  let required_globals =
+    List.fold_right (fun compunit required_globals -> match compunit with
+        | { pm_kind = PM_intf } ->
+            required_globals
+        | { pm_kind = PM_impl { cu_required_globals; cu_reloc } } ->
+            let remove_required (rel, _pos) required_globals =
+              match rel with
+                Reloc_setglobal id ->
+                  Ident.Set.remove id required_globals
+              | _ ->
+                  required_globals
+            in
+            let required_globals =
+              List.fold_right remove_required cu_reloc required_globals
+            in
+            List.fold_right Ident.Set.add cu_required_globals required_globals)
+      members Ident.Set.empty
+  in
   let unit_names =
     List.map (fun m -> m.pm_name) members in
   let mapping =
@@ -211,20 +245,24 @@ let package_object_files ppf files targetfile targetname coercion =
                                           targetname Subst.identity members in
     build_global_target oc targetname members mapping ofs coercion;
     let pos_debug = pos_out oc in
-    if !Clflags.debug && !events <> [] then
+    if !Clflags.debug && !events <> [] then begin
       output_value oc (List.rev !events);
+      output_value oc (StringSet.elements !debug_dirs);
+    end;
     let pos_final = pos_out oc in
     let imports =
       List.filter
-        (fun (name, crc) -> not (List.mem name unit_names))
+        (fun (name, _crc) -> not (List.mem name unit_names))
         (Bytelink.extract_crc_interfaces()) in
     let compunit =
       { cu_name = targetname;
         cu_pos = pos_code;
         cu_codesize = pos_debug - pos_code;
         cu_reloc = List.rev !relocs;
-        cu_imports = (targetname, Env.crc_of_unit targetname) :: imports;
+        cu_imports =
+          (targetname, Some (Env.crc_of_unit targetname)) :: imports;
         cu_primitives = !primitives;
+        cu_required_globals = Ident.Set.elements required_globals;
         cu_force_link = !force_link;
         cu_debug = if pos_final > pos_debug then pos_debug else 0;
         cu_debugsize = pos_final - pos_debug } in
@@ -238,7 +276,7 @@ let package_object_files ppf files targetfile targetname coercion =
 
 (* The entry point *)
 
-let package_files ppf files targetfile =
+let package_files ppf initial_env files targetfile =
     let files =
     List.map
         (fun f ->
@@ -247,13 +285,13 @@ let package_files ppf files targetfile =
         files in
     let prefix = chop_extensions targetfile in
     let targetcmi = prefix ^ ".cmi" in
-    let targetname = String.capitalize(Filename.basename prefix) in
+    let targetname = String.capitalize_ascii(Filename.basename prefix) in
     try
-      let coercion = Typemod.package_units files targetcmi targetname in
-    let ret = package_object_files ppf files targetfile targetname coercion in
-    ret
-  with x ->
-    remove_file targetfile; raise x
+      let coercion =
+        Typemod.package_units initial_env files targetcmi targetname in
+      package_object_files ppf files targetfile targetname coercion
+    with x ->
+      remove_file targetfile; raise x
 
 (* Error report *)
 
@@ -276,3 +314,16 @@ let report_error ppf = function
         Location.print_filename file name id
   | File_not_found file ->
       fprintf ppf "File %s not found" file
+
+let () =
+  Location.register_error_of_exn
+    (function
+      | Error err -> Some (Location.error_of_printer_file report_error err)
+      | _ -> None
+    )
+
+let reset () =
+  relocs := [];
+  events := [];
+  primitives := [];
+  force_link := false

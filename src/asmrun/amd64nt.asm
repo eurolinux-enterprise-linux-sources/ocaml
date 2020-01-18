@@ -1,15 +1,17 @@
-;***********************************************************************
-;*                                                                     *
-;*                                OCaml                                *
-;*                                                                     *
-;*            Xavier Leroy, projet Gallium, INRIA Rocquencourt         *
-;*                                                                     *
-;*  Copyright 2006 Institut National de Recherche en Informatique et   *
-;*  en Automatique.  All rights reserved.  This file is distributed    *
-;*  under the terms of the GNU Library General Public License, with    *
-;*  the special exception on linking described in file ../LICENSE.     *
-;*                                                                     *
-;***********************************************************************
+;**************************************************************************
+;*                                                                        *
+;*                                 OCaml                                  *
+;*                                                                        *
+;*             Xavier Leroy, projet Gallium, INRIA Rocquencourt           *
+;*                                                                        *
+;*   Copyright 2006 Institut National de Recherche en Informatique et     *
+;*     en Automatique.                                                    *
+;*                                                                        *
+;*   All rights reserved.  This file is distributed under the terms of    *
+;*   the GNU Lesser General Public License version 2.1, with the          *
+;*   special exception on linking described in the file LICENSE.          *
+;*                                                                        *
+;**************************************************************************
 
 ; Asm part of the runtime system, AMD64 processor, Intel syntax
 
@@ -29,6 +31,7 @@
         EXTRN  caml_last_return_address: QWORD
         EXTRN  caml_gc_regs: QWORD
         EXTRN  caml_exception_pointer: QWORD
+        EXTRN  caml_backtrace_pos: DWORD
         EXTRN  caml_backtrace_active: DWORD
         EXTRN  caml_stash_backtrace: NEAR
 
@@ -324,13 +327,13 @@ L110:
         ALIGN   16
 caml_raise_exception:
         test    caml_backtrace_active, 1
-        jne     L111
+        jne     L112
         mov     rax, rcx             ; First argument is exn bucket
         mov     rsp, caml_exception_pointer
         pop     r14                  ; Recover previous exception handler
         mov     r15, caml_young_ptr ; Reload alloc ptr
         ret
-L111:
+L112:
         mov     r12, rcx             ; Save exception bucket in r12
                                      ; Arg 1: exception bucket
         mov     rdx, caml_last_return_address ; Arg 2: PC of raise

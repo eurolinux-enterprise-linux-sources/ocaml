@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Pretty-printing of linearized machine code *)
 
@@ -25,7 +28,7 @@ let instr ppf i =
   | Lend -> ()
   | Lop op ->
       begin match op with
-      | Ialloc _ | Icall_ind | Icall_imm _ | Iextcall(_, _) ->
+      | Ialloc _ | Icall_ind _ | Icall_imm _ | Iextcall _ ->
           fprintf ppf "@[<1>{%a}@]@," regsetaddr i.live
       | _ -> ()
       end;
@@ -60,8 +63,8 @@ let instr ppf i =
       fprintf ppf "push trap"
   | Lpoptrap ->
       fprintf ppf "pop trap"
-  | Lraise ->
-      fprintf ppf "raise %a" reg i.arg.(0)
+  | Lraise k ->
+      fprintf ppf "%a %a" Printcmm.raise_kind k reg i.arg.(0)
   end;
   if not (Debuginfo.is_none i.dbg) then
     fprintf ppf " %s" (Debuginfo.to_string i.dbg)

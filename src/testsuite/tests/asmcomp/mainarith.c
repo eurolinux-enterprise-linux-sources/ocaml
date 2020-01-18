@@ -1,14 +1,17 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the Q Public License version 1.0.               */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                OCaml                                   */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 #include <stdio.h>
 #include <math.h>
@@ -16,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../../byterun/config.h"
+#include "../../../byterun/caml/config.h"
 #define FMT ARCH_INTNAT_PRINTF_FORMAT
 
 void caml_ml_array_bound_error(void)
@@ -33,30 +36,35 @@ double F, G;
 #define INTTEST(arg,res) \
   { intnat result = (res); \
     if (arg != result) \
-      printf("Failed test \"%s == %s\" for X=%"FMT"d and Y=%"FMT"d: result %"FMT"d, expected %"FMT"d\n", \
+      printf("Failed test \"%s == %s\" for X=%"FMT"d and Y=%"FMT"d: " \
+             "result %"FMT"d, expected %"FMT"d\n",                    \
              #arg, #res, X, Y, arg, result); \
   }
 #define INTFLOATTEST(arg,res) \
   { intnat result = (res); \
     if (arg != result) \
-      printf("Failed test \"%s == %s\" for F=%.15g and G=%.15g: result %"FMT"d, expected %"FMT"d\n", \
+      printf("Failed test \"%s == %s\" for F=%.15g and G=%.15g: "\
+             "result %"FMT"d, expected %"FMT"d\n",               \
              #arg, #res, F, G, arg, result); \
   }
 #define FLOATTEST(arg,res) \
   { double result = (res); \
     if (arg < result || arg > result) \
-      printf("Failed test \"%s == %s\" for F=%.15g and G=%.15g: result %.15g, expected %.15g\n", \
+      printf("Failed test \"%s == %s\" for F=%.15g and G=%.15g: "\
+             "result %.15g, expected %.15g\n",                   \
              #arg, #res, F, G, arg, result); \
   }
 #define FLOATINTTEST(arg,res) \
   { double result = (res); \
     if (arg < result || arg > result) \
-      printf("Failed test \"%s == %s\" for X=%"FMT"d and Y=%"FMT"d: result %.15g, expected %.15g\n", \
+      printf("Failed test \"%s == %s\" for X=%"FMT"d and Y=%"FMT"d: "\
+             "result %.15g, expected %.15g\n",                       \
              #arg, #res, X, Y, arg, result); \
   }
 
-extern void call_gen_code();
-extern void testarith();
+extern void call_gen_code(void (*)(void));
+extern void testarith(void);
+static intnat mulhs(intnat x, intnat y);
 
 void do_test(void)
 {
@@ -83,7 +91,7 @@ void do_test(void)
       INTTEST(R[15], (X - 1));
       INTTEST(R[16], (X - -1));
 
-      INTTEST(R[17], ((intnat) ((char *)R - 8)));
+      INTTEST(R[17], ((intnat) ((uintnat)R - 8)));
       INTTEST(R[18], ((intnat) ((char *)R - Y)));
 
       INTTEST(R[19], (X * 2));
@@ -248,28 +256,54 @@ void do_test(void)
 
       FLOATTEST(D[37], - F);
       FLOATTEST(D[38], fabs(F));
+
+      INTTEST(R[116], mulhs(X, Y));
 }
 
-#ifdef __i386__
-#ifdef __FreeBSD__
-#include <floatingpoint.h>
-#endif
-#endif
+/* Multiply-high signed.  Hacker's Delight section 8.2 */
 
-void init_ieee_floats(void)
+#define HALFSIZE (4 * sizeof(intnat))
+#define HALFMASK (((intnat)1 << HALFSIZE) - 1)
+
+static intnat mulhs(intnat u, intnat v)
 {
-#ifdef __i386__
-#ifdef __FreeBSD__
-  fpsetmask(0);
-#endif
-#endif
+  uintnat u0, v0, w0;
+  intnat u1, v1, w1, w2, t;
+  u0 = u & HALFMASK; u1 = u >> HALFSIZE;
+  v0 = v & HALFMASK; v1 = v >> HALFSIZE;
+  w0 = u0*v0;
+  t = u1*v0 + (w0 >> HALFSIZE);
+  w1 = t & HALFMASK;
+  w2 = t >> HALFSIZE;
+  w1 = u0*v1 + w1;
+  return u1*v1 + w2 + (w1 >> HALFSIZE);
 }
+
+/* A simple linear congruential PRNG */
+
+#ifdef ARCH_SIXTYFOUR
+#define RAND_A 6364136223846793005ULL
+#define RAND_C 1442695040888963407ULL
+#else
+#define RAND_A 214013U
+#define RAND_C 2531011U
+#endif
+
+static intnat rnd(void)
+{
+  static uintnat seed = 0;
+  seed = seed * RAND_A + RAND_C;
+  return (intnat) seed;
+}
+
+/* Test harness */
+
+#define NUM_RANDOM_ITERATIONS 1000000
 
 int main(int argc, char **argv)
 {
+  int i;
   double weird[4];
-
-  init_ieee_floats();
 
   if (argc >= 5) {
     X = atoi(argv[1]);
@@ -279,12 +313,14 @@ int main(int argc, char **argv)
     do_test();
     return 0;
   }
+  printf("Testing -2...2\n");
   for(Y = -2; Y <= 2; Y++) {
     for (X = -2; X <= 2; X++) {
       F = X; G = Y; do_test();
     }
   }
   if (!(argc >= 2 && strcmp(argv[1], "noinf"))) {
+    printf("Testing special FP values\n");
     weird[0] = 0.0;
     weird[1] = 1.0 / weird[0];         /* +infty */
     weird[2] = -1.0 / weird[0];        /* -infty */
@@ -295,13 +331,13 @@ int main(int argc, char **argv)
       }
     }
   }
-  while(1) {
-    X = (rand() & 0x1FFFFFFF) - 0x10000000;
-    Y = (rand() & 0x1FFFFFFF) - 0x10000000;
+  printf("Testing %d random values\n", NUM_RANDOM_ITERATIONS);
+  for (i = 0; i < NUM_RANDOM_ITERATIONS; i++) {
+    X = rnd();
+    Y = rnd();
     F = X / 1e3;
     G = Y / 1e3;
     do_test();
-    printf("."); fflush(stdout);
   }
   return 0;
 }

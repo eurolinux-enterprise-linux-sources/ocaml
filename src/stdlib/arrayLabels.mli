@@ -1,15 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../LICENSE.     *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** Array operations. *)
 
@@ -47,7 +49,8 @@ external make : int -> 'a -> 'a array = "caml_make_vect"
    size is only [Sys.max_array_length / 2].*)
 
 external create : int -> 'a -> 'a array = "caml_make_vect"
-(** @deprecated [Array.create] is an alias for {!ArrayLabels.make}. *)
+  [@@ocaml.deprecated "Use Array.make instead."]
+(** @deprecated [Array.create] is an alias for {!Array.make}. *)
 
 val init : int -> f:(int -> 'a) -> 'a array
 (** [Array.init n f] returns a fresh array of length [n],
@@ -68,20 +71,21 @@ val make_matrix : dimx:int -> dimy:int -> 'a -> 'a array array
    with the notation [m.(x).(y)].
 
    Raise [Invalid_argument] if [dimx] or [dimy] is negative or
-   greater than [Sys.max_array_length].
+   greater than {!Sys.max_array_length}.
    If the value of [e] is a floating-point number, then the maximum
    size is only [Sys.max_array_length / 2]. *)
 
 val create_matrix : dimx:int -> dimy:int -> 'a -> 'a array array
+  [@@ocaml.deprecated "Use Array.make_matrix instead."]
 (** @deprecated [Array.create_matrix] is an alias for
-   {!ArrayLabels.make_matrix}. *)
+   {!Array.make_matrix}. *)
 
 val append : 'a array -> 'a array -> 'a array
 (** [Array.append v1 v2] returns a fresh array containing the
    concatenation of the arrays [v1] and [v2]. *)
 
 val concat : 'a array list -> 'a array
-(** Same as [Array.append], but concatenates a list of arrays. *)
+(** Same as {!Array.append}, but concatenates a list of arrays. *)
 
 val sub : 'a array -> pos:int -> len:int -> 'a array
 (** [Array.sub a start len] returns a fresh array of length [len],
@@ -134,12 +138,12 @@ val map : f:('a -> 'b) -> 'a array -> 'b array
    [[| f a.(0); f a.(1); ...; f a.(Array.length a - 1) |]]. *)
 
 val iteri : f:(int -> 'a -> unit) -> 'a array -> unit
-(** Same as {!ArrayLabels.iter}, but the
+(** Same as {!Array.iter}, but the
    function is applied to the index of the element as first argument,
    and the element itself as second argument. *)
 
 val mapi : f:(int -> 'a -> 'b) -> 'a array -> 'b array
-(** Same as {!ArrayLabels.map}, but the
+(** Same as {!Array.map}, but the
    function is applied to the index of the element as first argument,
    and the element itself as second argument. *)
 
@@ -152,6 +156,59 @@ val fold_right : f:('b -> 'a -> 'a) -> 'b array -> init:'a -> 'a
 (** [Array.fold_right f a x] computes
    [f a.(0) (f a.(1) ( ... (f a.(n-1) x) ...))],
    where [n] is the length of the array [a]. *)
+
+
+(** {6 Iterators on two arrays} *)
+
+
+val iter2 : f:('a -> 'b -> unit) -> 'a array -> 'b array -> unit
+(** [Array.iter2 f a b] applies function [f] to all the elements of [a]
+   and [b].
+   Raise [Invalid_argument] if the arrays are not the same size.
+   @since 4.05.0 *)
+
+val map2 : f:('a -> 'b -> 'c) -> 'a array -> 'b array -> 'c array
+(** [Array.map2 f a b] applies function [f] to all the elements of [a]
+   and [b], and builds an array with the results returned by [f]:
+   [[| f a.(0) b.(0); ...; f a.(Array.length a - 1) b.(Array.length b - 1)|]].
+   Raise [Invalid_argument] if the arrays are not the same size.
+   @since 4.05.0 *)
+
+
+(** {6 Array scanning} *)
+
+
+val exists : f:('a -> bool) -> 'a array -> bool
+(** [Array.exists p [|a1; ...; an|]] checks if at least one element of
+    the array satisfies the predicate [p]. That is, it returns
+    [(p a1) || (p a2) || ... || (p an)].
+    @since 4.03.0 *)
+
+val for_all : f:('a -> bool) -> 'a array -> bool
+(** [Array.for_all p [|a1; ...; an|]] checks if all elements of the array
+   satisfy the predicate [p]. That is, it returns
+   [(p a1) && (p a2) && ... && (p an)].
+   @since 4.03.0 *)
+
+val mem : 'a -> set:'a array -> bool
+(** [mem x a] is true if and only if [x] is equal
+   to an element of [a].
+   @since 4.03.0 *)
+
+val memq : 'a -> set:'a array -> bool
+(** Same as {!Array.mem}, but uses physical equality instead of structural
+   equality to compare list elements.
+   @since 4.03.0 *)
+
+external create_float: int -> float array = "caml_make_float_vect"
+(** [Array.create_float n] returns a fresh float array of length [n],
+    with uninitialized data.
+    @since 4.03 *)
+
+val make_float: int -> float array
+  [@@ocaml.deprecated "Use Array.create_float instead."]
+(** @deprecated [Array.make_float] is an alias for
+    {!Array.create_float}. *)
 
 
 (** {6 Sorting} *)
@@ -184,18 +241,18 @@ val sort : cmp:('a -> 'a -> int) -> 'a array -> unit
 *)
 
 val stable_sort : cmp:('a -> 'a -> int) -> 'a array -> unit
-(** Same as {!ArrayLabels.sort}, but the sorting algorithm is stable (i.e.
+(** Same as {!Array.sort}, but the sorting algorithm is stable (i.e.
    elements that compare equal are kept in their original order) and
    not guaranteed to run in constant heap space.
 
    The current implementation uses Merge Sort. It uses [n/2]
    words of heap space, where [n] is the length of the array.
-   It is usually faster than the current implementation of {!ArrayLabels.sort}.
+   It is usually faster than the current implementation of {!Array.sort}.
 *)
 
 val fast_sort : cmp:('a -> 'a -> int) -> 'a array -> unit
-(** Same as {!Array.sort} or {!Array.stable_sort}, whichever is faster
-    on typical input.
+(** Same as {!Array.sort} or {!Array.stable_sort}, whichever is
+    faster on typical input.
 *)
 
 

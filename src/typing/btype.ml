@@ -1,17 +1,22 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(* Xavier Leroy and Jerome Vouillon, projet Cristal, INRIA Rocquencourt*)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*  Xavier Leroy and Jerome Vouillon, projet Cristal, INRIA Rocquencourt  *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Basic operations on core types *)
 
+open Misc
+open Asttypes
 open Types
 
 (**** Sets, maps and hashtables of types ****)
@@ -54,8 +59,40 @@ let newmarkedgenvar () =
 
 let is_Tvar = function {desc=Tvar _} -> true | _ -> false
 let is_Tunivar = function {desc=Tunivar _} -> true | _ -> false
+let is_Tconstr = function {desc=Tconstr _} -> true | _ -> false
 
 let dummy_method = "*dummy method*"
+let default_mty = function
+    Some mty -> mty
+  | None -> Mty_signature []
+
+(**** Definitions for backtracking ****)
+
+type change =
+    Ctype of type_expr * type_desc
+  | Ccompress of type_expr * type_desc * type_desc
+  | Clevel of type_expr * int
+  | Cname of
+      (Path.t * type_expr list) option ref * (Path.t * type_expr list) option
+  | Crow of row_field option ref * row_field option
+  | Ckind of field_kind option ref * field_kind option
+  | Ccommu of commutable ref * commutable
+  | Cuniv of type_expr option ref * type_expr option
+  | Ctypeset of TypeSet.t ref * TypeSet.t
+
+type changes =
+    Change of change * changes ref
+  | Unchanged
+  | Invalid
+
+let trail = Weak.create 1
+
+let log_change ch =
+  match Weak.get trail 0 with None -> ()
+  | Some r ->
+      let r' = ref Unchanged in
+      r := Change (ch, r');
+      Weak.set trail 0 (Some r')
 
 (**** Representative of a type ****)
 
@@ -64,19 +101,25 @@ let rec field_kind_repr =
     Fvar {contents = Some kind} -> field_kind_repr kind
   | kind                        -> kind
 
-let rec repr =
-  function
-    {desc = Tlink t'} ->
-      (*
-         We do no path compression. Path compression does not seem to
-         improve notably efficiency, and it prevents from changing a
-         [Tlink] into another type (for instance, for undoing a
-         unification).
-      *)
-      repr t'
-  | {desc = Tfield (_, k, _, t')} when field_kind_repr k = Fabsent ->
-      repr t'
-  | t -> t
+let rec repr_link compress t d =
+ function
+   {desc = Tlink t' as d'} ->
+     repr_link true t d' t'
+ | {desc = Tfield (_, k, _, t') as d'} when field_kind_repr k = Fabsent ->
+     repr_link true t d' t'
+ | t' ->
+     if compress then begin
+       log_change (Ccompress (t, t.desc, d)); t.desc <- d
+     end;
+     t'
+
+let repr t =
+  match t.desc with
+   Tlink t' as d ->
+     repr_link false t d t'
+ | Tfield (_, k, _, t') as d when field_kind_repr k = Fabsent ->
+     repr_link false t d t'
+ | _ -> t
 
 let rec commu_repr = function
     Clink r when !r <> Cunknown -> commu_repr !r
@@ -166,27 +209,31 @@ let proxy ty =
 
 (**** Utilities for fixed row private types ****)
 
-let has_constr_row t =
+let row_of_type t = 
   match (repr t).desc with
     Tobject(t,_) ->
-      let rec check_row t =
-        match (repr t).desc with
-          Tfield(_,_,_,t) -> check_row t
-        | Tconstr _ -> true
-        | _ -> false
-      in check_row t
+      let rec get_row t =
+        let t = repr t in
+        match t.desc with
+          Tfield(_,_,_,t) -> get_row t
+        | _ -> t
+      in get_row t
   | Tvariant row ->
-      (match row_more row with {desc=Tconstr _} -> true | _ -> false)
+      row_more row
   | _ ->
-      false
+      t
+
+let has_constr_row t =
+  not (is_Tconstr t) && is_Tconstr (row_of_type t)
 
 let is_row_name s =
   let l = String.length s in
   if l < 4 then false else String.sub s (l-4) 4 = "#row"
 
-let is_constr_row t =
+let is_constr_row ~allow_ident t =
   match t.desc with
-    Tconstr (Path.Pident id, _, _) -> is_row_name (Ident.name id)
+    Tconstr (Path.Pident id, _, _) when allow_ident ->
+      is_row_name (Ident.name id)
   | Tconstr (Path.Pdot (_, s, _), _, _) -> is_row_name s
   | _ -> false
 
@@ -231,6 +278,123 @@ let rec iter_abbrev f = function
     Mnil                   -> ()
   | Mcons(_, _, ty, ty', rem) -> f ty; f ty'; iter_abbrev f rem
   | Mlink rem              -> iter_abbrev f !rem
+
+type type_iterators =
+  { it_signature: type_iterators -> signature -> unit;
+    it_signature_item: type_iterators -> signature_item -> unit;
+    it_value_description: type_iterators -> value_description -> unit;
+    it_type_declaration: type_iterators -> type_declaration -> unit;
+    it_extension_constructor: type_iterators -> extension_constructor -> unit;
+    it_module_declaration: type_iterators -> module_declaration -> unit;
+    it_modtype_declaration: type_iterators -> modtype_declaration -> unit;
+    it_class_declaration: type_iterators -> class_declaration -> unit;
+    it_class_type_declaration: type_iterators -> class_type_declaration -> unit;
+    it_module_type: type_iterators -> module_type -> unit;
+    it_class_type: type_iterators -> class_type -> unit;
+    it_type_kind: type_iterators -> type_kind -> unit;
+    it_do_type_expr: type_iterators -> type_expr -> unit;
+    it_type_expr: type_iterators -> type_expr -> unit;
+    it_path: Path.t -> unit; }
+
+let iter_type_expr_cstr_args f = function
+  | Cstr_tuple tl -> List.iter f tl
+  | Cstr_record lbls -> List.iter (fun d -> f d.ld_type) lbls
+
+let map_type_expr_cstr_args f = function
+  | Cstr_tuple tl -> Cstr_tuple (List.map f tl)
+  | Cstr_record lbls ->
+      Cstr_record (List.map (fun d -> {d with ld_type=f d.ld_type}) lbls)
+
+let iter_type_expr_kind f = function
+  | Type_abstract -> ()
+  | Type_variant cstrs ->
+      List.iter
+        (fun cd ->
+           iter_type_expr_cstr_args f cd.cd_args;
+           Misc.may f cd.cd_res
+        )
+        cstrs
+  | Type_record(lbls, _) ->
+      List.iter (fun d -> f d.ld_type) lbls
+  | Type_open ->
+      ()
+
+
+let type_iterators =
+  let it_signature it =
+    List.iter (it.it_signature_item it)
+  and it_signature_item it = function
+      Sig_value (_, vd)     -> it.it_value_description it vd
+    | Sig_type (_, td, _)   -> it.it_type_declaration it td
+    | Sig_typext (_, td, _) -> it.it_extension_constructor it td
+    | Sig_module (_, md, _) -> it.it_module_declaration it md
+    | Sig_modtype (_, mtd)  -> it.it_modtype_declaration it mtd
+    | Sig_class (_, cd, _)  -> it.it_class_declaration it cd
+    | Sig_class_type (_, ctd, _) -> it.it_class_type_declaration it ctd
+  and it_value_description it vd =
+    it.it_type_expr it vd.val_type
+  and it_type_declaration it td =
+    List.iter (it.it_type_expr it) td.type_params;
+    may (it.it_type_expr it) td.type_manifest;
+    it.it_type_kind it td.type_kind
+  and it_extension_constructor it td =
+    it.it_path td.ext_type_path;
+    List.iter (it.it_type_expr it) td.ext_type_params;
+    iter_type_expr_cstr_args (it.it_type_expr it) td.ext_args;
+    may (it.it_type_expr it) td.ext_ret_type
+  and it_module_declaration it md =
+    it.it_module_type it md.md_type
+  and it_modtype_declaration it mtd =
+    may (it.it_module_type it) mtd.mtd_type
+  and it_class_declaration it cd =
+    List.iter (it.it_type_expr it) cd.cty_params;
+    it.it_class_type it cd.cty_type;
+    may (it.it_type_expr it) cd.cty_new;
+    it.it_path cd.cty_path
+  and it_class_type_declaration it ctd =
+    List.iter (it.it_type_expr it) ctd.clty_params;
+    it.it_class_type it ctd.clty_type;
+    it.it_path ctd.clty_path
+  and it_module_type it = function
+      Mty_ident p
+    | Mty_alias(_, p) -> it.it_path p
+    | Mty_signature sg -> it.it_signature it sg
+    | Mty_functor (_, mto, mt) ->
+        may (it.it_module_type it) mto;
+        it.it_module_type it mt
+  and it_class_type it = function
+      Cty_constr (p, tyl, cty) ->
+        it.it_path p;
+        List.iter (it.it_type_expr it) tyl;
+        it.it_class_type it cty
+    | Cty_signature cs ->
+        it.it_type_expr it cs.csig_self;
+        Vars.iter (fun _ (_,_,ty) -> it.it_type_expr it ty) cs.csig_vars;
+        List.iter
+          (fun (p, tl) -> it.it_path p; List.iter (it.it_type_expr it) tl)
+          cs.csig_inher
+    | Cty_arrow  (_, ty, cty) ->
+        it.it_type_expr it ty;
+        it.it_class_type it cty
+  and it_type_kind it kind =
+    iter_type_expr_kind (it.it_type_expr it) kind
+  and it_do_type_expr it ty =
+    iter_type_expr (it.it_type_expr it) ty;
+    match ty.desc with
+      Tconstr (p, _, _)
+    | Tobject (_, {contents=Some (p, _)})
+    | Tpackage (p, _, _) ->
+        it.it_path p
+    | Tvariant row ->
+        may (fun (p,_) -> it.it_path p) (row_repr row).row_name
+    | _ -> ()
+  and it_path _p = ()
+  in
+  { it_path; it_type_expr = it_do_type_expr; it_do_type_expr;
+    it_type_kind; it_class_type; it_module_type;
+    it_signature; it_class_type_declaration; it_class_declaration;
+    it_modtype_declaration; it_module_declaration; it_extension_constructor;
+    it_type_declaration; it_value_description; it_signature_item; }
 
 let copy_row f fixed row keep more =
   let fields = List.map
@@ -277,12 +441,12 @@ let rec copy_type_desc ?(keep_names=false) f = function
   | Tobject(ty, {contents = Some (p, tl)})
                         -> Tobject (f ty, ref (Some(p, List.map f tl)))
   | Tobject (ty, _)     -> Tobject (f ty, ref None)
-  | Tvariant row        -> assert false (* too ambiguous *)
+  | Tvariant _          -> assert false (* too ambiguous *)
   | Tfield (p, k, ty1, ty2) -> (* the kind is kept shared *)
       Tfield (p, field_kind_repr k, f ty1, f ty2)
   | Tnil                -> Tnil
   | Tlink ty            -> copy_type_desc f ty.desc
-  | Tsubst ty           -> assert false
+  | Tsubst _            -> assert false
   | Tunivar _ as ty     -> ty (* always keep the name *)
   | Tpoly (ty, tyl)     ->
       let tyl = List.map (fun x -> norm_univar (f x)) tyl in
@@ -331,6 +495,17 @@ let mark_type_node ty =
 let mark_type_params ty =
   iter_type_expr mark_type ty
 
+let type_iterators =
+  let it_type_expr it ty =
+    let ty = repr ty in
+    if ty.level >= lowest_level then begin
+      mark_type_node ty;
+      it.it_do_type_expr it ty;
+    end
+  in
+  {type_iterators with it_type_expr}
+
+
 (* Remove marks from a type. *)
 let rec unmark_type ty =
   let ty = repr ty in
@@ -339,36 +514,24 @@ let rec unmark_type ty =
     iter_type_expr unmark_type ty
   end
 
+let unmark_iterators =
+  let it_type_expr _it ty = unmark_type ty in
+  {type_iterators with it_type_expr}
+
 let unmark_type_decl decl =
-  List.iter unmark_type decl.type_params;
-  begin match decl.type_kind with
-    Type_abstract -> ()
-  | Type_variant cstrs ->
-      List.iter
-        (fun (c, tl, ret_type_opt) ->
-          List.iter unmark_type tl;
-          Misc.may unmark_type ret_type_opt)
-        cstrs
-  | Type_record(lbls, rep) ->
-      List.iter (fun (c, mut, t) -> unmark_type t) lbls
-  end;
-  begin match decl.type_manifest with
-    None    -> ()
-  | Some ty -> unmark_type ty
-  end
+  unmark_iterators.it_type_declaration unmark_iterators decl
+
+let unmark_extension_constructor ext =
+  List.iter unmark_type ext.ext_type_params;
+  iter_type_expr_cstr_args unmark_type ext.ext_args;
+  Misc.may unmark_type ext.ext_ret_type
 
 let unmark_class_signature sign =
-  unmark_type sign.cty_self;
-  Vars.iter (fun l (m, v, t) -> unmark_type t) sign.cty_vars
+  unmark_type sign.csig_self;
+  Vars.iter (fun _l (_m, _v, t) -> unmark_type t) sign.csig_vars
 
-let rec unmark_class_type =
-  function
-    Cty_constr (p, tyl, cty) ->
-      List.iter unmark_type tyl; unmark_class_type cty
-  | Cty_signature sign ->
-      unmark_class_signature sign
-  | Cty_fun (_, ty, cty) ->
-      unmark_type ty; unmark_class_type cty
+let unmark_class_type cty =
+  unmark_iterators.it_class_type unmark_iterators cty
 
 
                   (*******************************************)
@@ -376,10 +539,16 @@ let rec unmark_class_type =
                   (*******************************************)
 
 (* Search whether the expansion has been memorized. *)
+
+let lte_public p1 p2 =  (* Private <= Public *)
+  match p1, p2 with
+  | Private, _ | _, Public -> true
+  | Public, Private -> false
+
 let rec find_expans priv p1 = function
     Mnil -> None
-  | Mcons (priv', p2, ty0, ty, _)
-    when priv' >= priv && Path.same p1 p2 -> Some ty
+  | Mcons (priv', p2, _ty0, ty, _)
+    when lte_public priv priv' && Path.same p1 p2 -> Some ty
   | Mcons (_, _, _, _, rem)   -> find_expans priv p1 rem
   | Mlink {contents = rem} -> find_expans priv p1 rem
 
@@ -441,12 +610,17 @@ let check_memorized_abbrevs () =
                   (*  Utilities for labels          *)
                   (**********************************)
 
-let is_optional l =
-  String.length l > 0 && l.[0] = '?'
+let is_optional = function Optional _ -> true | _ -> false
 
-let label_name l =
-  if is_optional l then String.sub l 1 (String.length l - 1)
-                   else l
+let label_name = function
+    Nolabel -> ""
+  | Labelled s
+  | Optional s -> s
+
+let prefixed_label_name = function
+    Nolabel -> ""
+  | Labelled s -> "~" ^ s
+  | Optional s -> "?" ^ s
 
 let rec extract_label_aux hd l = function
     [] -> raise Not_found
@@ -461,19 +635,9 @@ let extract_label l ls = extract_label_aux [] l ls
                   (*  Utilities for backtracking    *)
                   (**********************************)
 
-type change =
-    Ctype of type_expr * type_desc
-  | Clevel of type_expr * int
-  | Cname of
-      (Path.t * type_expr list) option ref * (Path.t * type_expr list) option
-  | Crow of row_field option ref * row_field option
-  | Ckind of field_kind option ref * field_kind option
-  | Ccommu of commutable ref * commutable
-  | Cuniv of type_expr option ref * type_expr option
-  | Ctypeset of TypeSet.t ref * TypeSet.t
-
 let undo_change = function
     Ctype  (ty, desc) -> ty.desc <- desc
+  | Ccompress  (ty, desc, _) -> ty.desc <- desc
   | Clevel (ty, level) -> ty.level <- level
   | Cname  (r, v) -> r := v
   | Crow   (r, v) -> r := v
@@ -482,22 +646,8 @@ let undo_change = function
   | Cuniv  (r, v) -> r := v
   | Ctypeset (r, v) -> r := v
 
-type changes =
-    Change of change * changes ref
-  | Unchanged
-  | Invalid
-
 type snapshot = changes ref * int
-
-let trail = Weak.create 1
 let last_snapshot = ref 0
-
-let log_change ch =
-  match Weak.get trail 0 with None -> ()
-  | Some r ->
-      let r' = ref Unchanged in
-      r := Change (ch, r');
-      Weak.set trail 0 (Some r')
 
 let log_type ty =
   if ty.id <= !last_snapshot then log_change (Ctype (ty, ty.desc))
@@ -563,3 +713,25 @@ let backtrack (changes, old) =
       changes := Unchanged;
       last_snapshot := old;
       Weak.set trail 0 (Some changes)
+
+let rec rev_compress_log log r =
+  match !r with
+    Unchanged | Invalid ->
+      log
+  | Change (Ccompress _, next) ->
+      rev_compress_log (r::log) next
+  | Change (_, next) ->
+      rev_compress_log log next
+
+let undo_compress (changes, _old) =
+  match !changes with
+    Unchanged
+  | Invalid -> ()
+  | Change _ ->
+      let log = rev_compress_log [] changes in
+      List.iter
+        (fun r -> match !r with
+          Change (Ccompress (ty, desc, d), next) when ty.desc == d ->
+            ty.desc <- desc; r := !next
+        | _ -> ())
+        log

@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* The lexer generator. Command-line parsing. *)
 
@@ -18,7 +21,7 @@ let ml_automata = ref false
 let source_name = ref None
 let output_name = ref None
 
-let usage = "usage: ocamlex [options] sourcefile"
+let usage = "usage: ocamllex [options] sourcefile"
 
 let print_version_string () =
   print_string "The OCaml lexer generator, version ";
@@ -74,12 +77,12 @@ let main () =
     let (entries, transitions) = Lexgen.make_dfa def.entrypoints in
     if !ml_automata then begin
       Outputbis.output_lexdef
-        source_name ic oc tr
-        def.header entries transitions def.trailer
+        ic oc tr
+        def.header def.refill_handler entries transitions def.trailer
     end else begin
        let tables = Compact.compact_tables transitions in
-       Output.output_lexdef source_name ic oc tr
-         def.header tables entries def.trailer
+       Output.output_lexdef ic oc tr
+         def.header def.refill_handler tables entries def.trailer
     end;
     close_in ic;
     close_out oc;

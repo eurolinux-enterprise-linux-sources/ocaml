@@ -1,33 +1,55 @@
-#########################################################################
-#                                                                       #
-#                                 OCaml                                 #
-#                                                                       #
-#            Xavier Leroy, projet Cristal, INRIA Rocquencourt           #
-#                                                                       #
-#   Copyright 1999 Institut National de Recherche en Informatique et    #
-#   en Automatique.  All rights reserved.  This file is distributed     #
-#   under the terms of the GNU Library General Public License, with     #
-#   the special exception on linking described in file ../../LICENSE.   #
-#                                                                       #
-#########################################################################
+#**************************************************************************
+#*                                                                        *
+#*                                 OCaml                                  *
+#*                                                                        *
+#*            Xavier Leroy, projet Cristal, INRIA Rocquencourt            *
+#*                                                                        *
+#*   Copyright 1999 Institut National de Recherche en Informatique et     *
+#*     en Automatique.                                                    *
+#*                                                                        *
+#*   All rights reserved.  This file is distributed under the terms of    *
+#*   the GNU Lesser General Public License version 2.1, with the          *
+#*   special exception on linking described in the file LICENSE.          *
+#*                                                                        *
+#**************************************************************************
 
 # Makefile for the dynamic link library
 
-include ../../config/Makefile
+# FIXME reduce redundancy by including ../Makefile
 
-CAMLC=../../boot/ocamlrun ../../ocamlc
-CAMLOPT=../../ocamlcompopt.sh
+include ../../config/Makefile
+CAMLRUN ?= ../../boot/ocamlrun
+CAMLYACC ?= ../../boot/ocamlyacc
+
+ROOTDIR   = ../..
+OCAMLC    = $(CAMLRUN) $(ROOTDIR)/ocamlc -nostdlib -I $(ROOTDIR)/stdlib
+OCAMLOPT  = $(CAMLRUN) $(ROOTDIR)/ocamlopt -nostdlib -I $(ROOTDIR)/stdlib
+
 INCLUDES=-I ../../utils -I ../../typing -I ../../bytecomp -I ../../asmcomp
-COMPFLAGS=-w +33..39 -warn-error A -I ../../stdlib $(INCLUDES)
+COMPFLAGS=$(INCLUDES) -absname -w +a-4-9-41-42-44-45-48 -bin-annot -g \
+   -I ../../stdlib -warn-error A \
+   -safe-string -strict-sequence -strict-formats
+ifeq "$(FLAMBDA)" "true"
+OPTCOMPFLAGS=-O3
+else
+OPTCOMPFLAGS=
+endif
 
 OBJS=dynlinkaux.cmo dynlink.cmo
 
 COMPILEROBJS=\
-  ../../utils/misc.cmo ../../utils/config.cmo ../../utils/clflags.cmo \
+  ../../utils/misc.cmo ../../utils/config.cmo \
+  ../../utils/identifiable.cmo ../../utils/numbers.cmo \
+  ../../utils/arg_helper.cmo ../../utils/clflags.cmo \
   ../../utils/tbl.cmo ../../utils/consistbl.cmo \
   ../../utils/terminfo.cmo ../../utils/warnings.cmo \
   ../../parsing/asttypes.cmi \
   ../../parsing/location.cmo ../../parsing/longident.cmo \
+  ../../parsing/docstrings.cmo ../../parsing/syntaxerr.cmo \
+  ../../parsing/ast_helper.cmo \
+  ../../parsing/ast_mapper.cmo ../../parsing/ast_iterator.cmo \
+  ../../parsing/attr_helper.cmo \
+  ../../parsing/builtin_attributes.cmo \
   ../../typing/ident.cmo ../../typing/path.cmo \
   ../../typing/primitive.cmo ../../typing/types.cmo \
   ../../typing/btype.cmo ../../typing/subst.cmo ../../typing/predef.cmo \
@@ -45,38 +67,40 @@ all: dynlink.cma extract_crc
 allopt: dynlink.cmxa
 
 dynlink.cma: $(OBJS)
-	$(CAMLC) $(COMPFLAGS) -ccopt "$(NATDYNLINKOPTS)" -a -o dynlink.cma \
+	$(OCAMLC) $(COMPFLAGS) -ccopt "$(NATDYNLINKOPTS)" -a -o dynlink.cma \
 	         $(OBJS)
 
 dynlink.cmxa: $(NATOBJS)
-	$(CAMLOPT) $(COMPFLAGS) -ccopt "$(NATDYNLINKOPTS)" -a -o dynlink.cmxa \
+	$(OCAMLOPT) $(COMPFLAGS) -ccopt "$(NATDYNLINKOPTS)" -a -o dynlink.cmxa \
 	           $(NATOBJS)
 
 dynlinkaux.cmo: $(COMPILEROBJS)
-	$(CAMLC) $(COMPFLAGS) -pack -o dynlinkaux.cmo $(COMPILEROBJS)
+	$(OCAMLC) $(COMPFLAGS) -pack -o dynlinkaux.cmo $(COMPILEROBJS)
 
 dynlinkaux.cmi: dynlinkaux.cmo
 
 dynlink.cmx: dynlink.cmi natdynlink.ml
 	cp natdynlink.ml  dynlink.mlopt
-	$(CAMLOPT) -c $(COMPFLAGS) -impl dynlink.mlopt
+	$(OCAMLOPT) -c $(COMPFLAGS) -impl dynlink.mlopt
 	rm -f dynlink.mlopt
 
 extract_crc: dynlink.cma extract_crc.cmo
-	$(CAMLC) $(COMPFLAGS) -o extract_crc dynlink.cma extract_crc.cmo
+	$(OCAMLC) -o extract_crc dynlink.cma extract_crc.cmo
+
+INSTALL_LIBDIR=$(DESTDIR)$(LIBDIR)
 
 install:
-	cp dynlink.cmi dynlink.cma dynlink.mli $(LIBDIR)
-	cp extract_crc $(LIBDIR)/extract_crc$(EXE)
+	cp dynlink.cmi dynlink.cmti dynlink.cma dynlink.mli "$(INSTALL_LIBDIR)"
+	cp extract_crc "$(INSTALL_LIBDIR)/extract_crc$(EXE)"
 
 installopt:
 	if $(NATDYNLINK); then \
-	  cp $(NATOBJS) dynlink.cmxa dynlink.$(A) $(LIBDIR) && \
-	  cd $(LIBDIR) && $(RANLIB) dynlink.$(A); \
+	  cp $(NATOBJS) dynlink.cmxa dynlink.$(A) "$(INSTALL_LIBDIR)" && \
+	  cd "$(INSTALL_LIBDIR)" && $(RANLIB) dynlink.$(A); \
 	fi
 
 partialclean:
-	rm -f extract_crc *.cm[ioax] *.cmxa
+	rm -f extract_crc *.cm[ioaxt] *.cmti *.cmxa
 
 clean: partialclean
 	rm -f *.$(A) *.$(O) *.so *.dll dynlink.mlopt
@@ -84,15 +108,16 @@ clean: partialclean
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 .mli.cmi:
-	$(CAMLC) -c $(COMPFLAGS) $<
+	$(OCAMLC) -c $(COMPFLAGS) $<
 
 .ml.cmo:
-	$(CAMLC) -c $(COMPFLAGS) $<
+	$(OCAMLC) -c $(COMPFLAGS) $<
 
 .ml.cmx:
-	$(CAMLOPT) -c $(COMPFLAGS) $<
+	$(OCAMLOPT) -c $(COMPFLAGS) $(OPTCOMPFLAGS) $<
 
 depend:
 
-dynlink.cmo: dynlinkaux.cmi dynlink.cmi
+dynlink.cmi: dynlinkaux.cmi
+dynlink.cmo: dynlink.cmi dynlinkaux.cmo
 extract_crc.cmo: dynlink.cmi

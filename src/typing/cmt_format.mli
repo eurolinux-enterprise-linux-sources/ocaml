@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*                  Fabrice Le Fessant, INRIA Saclay                   *)
-(*                                                                     *)
-(*  Copyright 2012 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*                   Fabrice Le Fessant, INRIA Saclay                     *)
+(*                                                                        *)
+(*   Copyright 2012 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (** cmt and cmti files format. *)
 
@@ -48,6 +51,8 @@ and binary_part =
 type cmt_infos = {
   cmt_modname : string;
   cmt_annots : binary_annots;
+  cmt_value_dependencies :
+    (Types.value_description * Types.value_description) list;
   cmt_comments : (string * Location.t) list;
   cmt_args : string array;
   cmt_sourcefile : string option;
@@ -55,7 +60,7 @@ type cmt_infos = {
   cmt_loadpath : string list;
   cmt_source_digest : string option;
   cmt_initial_env : Env.t;
-  cmt_imports : (string * Digest.t) list;
+  cmt_imports : (string * Digest.t option) list;
   cmt_interface_digest : Digest.t option;
   cmt_use_summaries : bool;
 }
@@ -78,7 +83,7 @@ val read : string -> Cmi_format.cmi_infos option * cmt_infos option
 val read_cmt : string -> cmt_infos
 val read_cmi : string -> Cmi_format.cmi_infos
 
-(** [save_cmt modname filename binary_annots sourcefile initial_env sg]
+(** [save_cmt filename modname binary_annots sourcefile initial_env cmi]
     writes a cmt(i) file.  *)
 val save_cmt :
   string ->  (* filename.cmt to generate *)
@@ -86,17 +91,21 @@ val save_cmt :
   binary_annots ->
   string option ->  (* source file *)
   Env.t -> (* initial env *)
-  Types.signature option -> (* if a .cmi was generated,
-                               the signature saved there *)
+  Cmi_format.cmi_infos option -> (* if a .cmi was generated *)
   unit
 
 (* Miscellaneous functions *)
 
 val read_magic_number : in_channel -> string
 
+val clear: unit -> unit
+
 val add_saved_type : binary_part -> unit
 val get_saved_types : unit -> binary_part list
 val set_saved_types : binary_part list -> unit
+
+val record_value_dependency:
+  Types.value_description -> Types.value_description -> unit
 
 
 (*

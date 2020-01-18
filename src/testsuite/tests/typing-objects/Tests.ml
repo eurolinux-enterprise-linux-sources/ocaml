@@ -1,8 +1,8 @@
-(* Le sous-typage est "syntaxique" *)
+(* Subtyping is "syntactic" *)
 fun (x : < x : int >) y z -> (y :> 'a), (x :> 'a), (z :> 'a);;
 (* - : (< x : int > as 'a) -> 'a -> 'a * 'a = <fun> *)
 
-(* Bizarrerie du typage des classes *)
+(* Quirks of class typing.  *)
 class ['a] c () = object
   method f = (new c (): int c)
 end and ['a] d () = object
@@ -11,14 +11,14 @@ end;;
 (* class ['a] c : unit -> object constraint 'a = int method f : 'a c end *)
 (* and ['a] d : unit -> object constraint 'a = int method f : 'a c end *)
 
-(* 'a libre dans classe d *)
+(* 'a free in class d *)
 class ['a] c () = object
   method f (x : 'a) = ()
 end and d () = object
   inherit ['a] c ()
 end;;
 
-(* Instancie #c *)
+(* Create instance #c *)
 class virtual c () = object
 end and ['a] d () = object
   constraint 'a = #c
@@ -36,7 +36,7 @@ end;;
 (* class ['a] c : unit -> object constraint 'a = int end
    and ['a] d : unit -> object constraint 'a = int #c end *)
 
-(* Self en parametre *)
+(* Self as parameter *)
 class ['a] c (x : 'a) = object (self : 'b)
   constraint 'a = 'b
   method f = self
@@ -51,20 +51,20 @@ class x () = object
 end;;
 (* The class x should be virtual:  its methods f is undefined *)
 
-(* Methode g en trop *)
+(* Supplementary method g *)
 class virtual c ((x : 'a): < f : int >) = object (_ : 'a) end
 and virtual d x = object (_ : 'a)
   inherit c x
   method g = true
 end;;
 
-(* Contrainte non respectee *)
+(* Constraint not respected *)
 class ['a] c () = object
   constraint 'a = int
   method f x = (x : bool c)
 end;;
 
-(* Differentes contraintes *)
+(* Different constraints *)
 class ['a, 'b] c () = object
   constraint 'a = int -> 'c
   constraint 'b = 'a * <x : 'b> * 'c * 'd
@@ -74,13 +74,13 @@ class ['a, 'b] d () = object
   inherit ['a, 'b] c ()
 end;;
 
-(* Contrainte non generique *)
+(* Non-generic constraint *)
 let x = ref [];;
 class ['a] c () = object
   method f = (x : 'a)
 end;;
 
-(* Abreviations *)
+(* Abbreviations *)
 type 'a c = <f : 'a c; g : 'a d>
 and 'a d = <f : int c>;;
 type 'a c = <f : 'a c; g : 'a d>
@@ -88,7 +88,7 @@ and 'a d = <f : 'a c>;;
 type 'a c = <f : 'a c>
 and 'a d = <f : int c>;;
 type 'a u = < x : 'a>
-and 'a t = 'a t u;;
+and 'a t = 'a t u;; (* fails since 4.04 *)
 type 'a u = 'a
 and 'a t = 'a t u;;
 type 'a u = 'a;;
@@ -129,7 +129,7 @@ class ['a, 'b] e () y = object inherit ['a, 'b] M'.c 1 y end;;
 open M;;
 (new c 5 true)#g;;
 
-(* #cl quand cl est fermee *)
+(* #cl when cl is closed *)
 module M = struct class ['a] c () = object method f (x : 'a) = () end end;;
 module M' =
   (M : sig class ['a] c : unit -> object method f : 'a -> unit end end);;
@@ -138,7 +138,7 @@ fun x -> (x :> 'a #M'.c);;
 class ['a] c (x : 'b #c) = object end;;
 class ['a] c (x : 'b #c) = object end;;
 
-(* Ordre de calcul *)
+(* Computation order *)
 class c () = object method f = 1 end and d () = object method f = 2 end;;
 class e () = object inherit c () inherit d () end;;
 (new e ())#f;;
@@ -187,11 +187,11 @@ class d x y = object inherit c x y end;;
 let c = new c 1 2 in c#x, c#y;;
 let d = new d 1 2 in d#x, d#y;;
 
-(* Parametres n'apparaissant pas dans le type de l'objet *)
+(* Parameters which does not appear in the object type *)
 class ['a] c (x : 'a) = object end;;
 new c;;
 
-(* Variables privees *)
+(* Private variables *)
 (*
 module type M = sig
   class c : unit -> object val x : int end
@@ -215,7 +215,7 @@ end;;
 let e = new e () in e#x, e#y, e#c, e#d;;
 *)
 
-(* Oubli de variables dans l'interface *)
+(* Forgotten variables in interfaces *)
 module M :
   sig
     class c : unit -> object
@@ -236,7 +236,7 @@ end;;
 let d = new d () in d#xc, d#xd;;
 
 class virtual ['a] matrix (sz, init : int * 'a) = object
-  val m = Array.create_matrix sz sz init
+  val m = Array.make_matrix sz sz init
   method add (mtx : 'a matrix) = (mtx#m.(0).(0) : 'a)
 end;;
 
@@ -305,26 +305,28 @@ class c () = object method virtual m : int method private m = 1 end;;
 
 (* Marshaling (cf. PR#5436) *)
 
-Oo.id (object end);;
-Oo.id (object end);;
-Oo.id (object end);;
+let r = ref 0;;
+let id o = Oo.id o - !r;;
+r := Oo.id (object end);;
+id (object end);;
+id (object end);;
 let o = object end in
   let s = Marshal.to_string o [] in
   let o' : < > = Marshal.from_string s 0 in
   let o'' : < > = Marshal.from_string s 0 in
-  (Oo.id o, Oo.id o', Oo.id o'');;
+  (id o, id o', id o'');;
 
 let o = object val x = 33 method m = x end in
   let s = Marshal.to_string o [Marshal.Closures] in
   let o' : <m:int> = Marshal.from_string s 0 in
   let o'' : <m:int> = Marshal.from_string s 0 in
-  (Oo.id o, Oo.id o', Oo.id o'', o#m, o'#m);;
+  (id o, id o', id o'', o#m, o'#m);;
 
 let o = object val x = 33 val y = 44 method m = x end in
-  let s = Marshal.to_string o [Marshal.Closures] in
-  let o' : <m:int> = Marshal.from_string s 0 in
-  let o'' : <m:int> = Marshal.from_string s 0 in
-  (Oo.id o, Oo.id o', Oo.id o'', o#m, o'#m);;
+  let s = Marshal.to_string (o,o) [Marshal.Closures] in
+  let (o1, o2) : (<m:int> * <m:int>) = Marshal.from_string s 0 in
+  let (o3, o4) : (<m:int> * <m:int>) = Marshal.from_string s 0 in
+  (id o, id o1, id o2, id o3, id o4, o#m, o1#m);;
 
 (* Recursion (cf. PR#5291) *)
 

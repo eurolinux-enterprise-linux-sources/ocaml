@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Substitutions *)
 
@@ -35,6 +38,30 @@ let add_modtype id ty s = { s with modtypes = Tbl.add id ty s.modtypes }
 
 let for_saving s = { s with for_saving = true }
 
+let loc s x =
+  if s.for_saving && not !Clflags.keep_locs then Location.none else x
+
+let remove_loc =
+  let open Ast_mapper in
+  {default_mapper with location = (fun _this _loc -> Location.none)}
+
+let is_not_doc = function
+  | ({Location.txt = "ocaml.doc"}, _) -> false
+  | ({Location.txt = "ocaml.text"}, _) -> false
+  | ({Location.txt = "doc"}, _) -> false
+  | ({Location.txt = "text"}, _) -> false
+  | _ -> true
+
+let attrs s x =
+  let x =
+    if s.for_saving && not !Clflags.keep_docs then
+      List.filter is_not_doc x
+    else x
+  in
+    if s.for_saving && not !Clflags.keep_locs
+    then remove_loc.Ast_mapper.attributes remove_loc x
+    else x
+
 let rec module_path s = function
     Pident id as p ->
       begin try Tbl.find id s.modules with Not_found -> p end
@@ -52,7 +79,7 @@ let modtype_path s = function
       with Not_found -> p end
   | Pdot(p, n, pos) ->
       Pdot(module_path s p, n, pos)
-  | Papply(p1, p2) ->
+  | Papply _ ->
       fatal_error "Subst.modtype_path"
 
 let type_path s = function
@@ -60,8 +87,15 @@ let type_path s = function
       begin try Tbl.find id s.types with Not_found -> p end
   | Pdot(p, n, pos) ->
       Pdot(module_path s p, n, pos)
-  | Papply(p1, p2) ->
+  | Papply _ ->
       fatal_error "Subst.type_path"
+
+let type_path s p =
+  match Path.constructor_typath p with
+  | Regular p -> type_path s p
+  | Cstr (ty_path, cstr) -> Pdot(type_path s ty_path, cstr, nopos)
+  | LocalExt _ -> type_path s p
+  | Ext (p, cstr) -> Pdot(module_path s p, cstr, nopos)
 
 (* Special type ids for saved signatures *)
 
@@ -72,6 +106,14 @@ let newpersty desc =
   decr new_id;
   { desc = desc; level = generic_level; id = !new_id }
 
+(* ensure that all occurrences of 'Tvar None' are physically shared *)
+let tvar_none = Tvar None
+let tunivar_none = Tunivar None
+let norm = function
+  | Tvar None -> tvar_none
+  | Tunivar None -> tunivar_none
+  | d -> d
+
 (* Similar to [Ctype.nondep_type_rec]. *)
 let rec typexp s ty =
   let ty = repr ty in
@@ -79,12 +121,16 @@ let rec typexp s ty =
     Tvar _ | Tunivar _ as desc ->
       if s.for_saving || ty.id < 0 then
         let ty' =
-          if s.for_saving then newpersty desc
+          if s.for_saving then newpersty (norm desc)
           else newty2 ty.level desc
         in
         save_desc ty desc; ty.desc <- Tsubst ty'; ty'
       else ty
   | Tsubst ty ->
+      ty
+  | Tfield (m, k, _t1, _t2) when not s.for_saving && m = dummy_method
+      && field_kind_repr k <> Fabsent && (repr ty).level < generic_level ->
+      (* do not copy the type of self when it is not generalized *)
       ty
 (* cannot do it, since it would omit subsitution
   | Tvariant row when not (static_row row) ->
@@ -93,12 +139,21 @@ let rec typexp s ty =
   | _ ->
     let desc = ty.desc in
     save_desc ty desc;
+    let tm = row_of_type ty in
+    let has_fixed_row =
+      not (is_Tconstr ty) && is_constr_row ~allow_ident:false tm in
     (* Make a stub *)
     let ty' = if s.for_saving then newpersty (Tvar None) else newgenvar () in
     ty.desc <- Tsubst ty';
     ty'.desc <-
-      begin match desc with
-      | Tconstr(p, tl, abbrev) ->
+      begin if has_fixed_row then
+        match tm.desc with (* PR#7348 *)
+          Tconstr (Pdot(m,i,pos), tl, _abbrev) ->
+            let i' = String.sub i 0 (String.length i - 4) in
+            Tconstr(type_path s (Pdot(m,i',pos)), tl, ref Mnil)
+        | _ -> assert false
+      else match desc with
+      | Tconstr(p, tl, _abbrev) ->
           Tconstr(type_path s p, List.map (typexp s) tl, ref Mnil)
       | Tpackage(p, n, tl) ->
           Tpackage(modtype_path s p, n, List.map (typexp s) tl)
@@ -108,10 +163,6 @@ let rec typexp s ty =
                         None -> None
                       | Some (p, tl) ->
                           Some (type_path s p, List.map (typexp s) tl)))
-      | Tfield (m, k, t1, t2)
-        when s == identity && ty.level < generic_level && m = dummy_method ->
-          (* not allowed to lower the level of the dummy method *)
-          Tfield (m, k, t1, typexp s t2)
       | Tvariant row ->
           let row = row_repr row in
           let more = repr row.row_more in
@@ -133,7 +184,7 @@ let rec typexp s ty =
                 | Tconstr _ | Tnil -> typexp s more
                 | Tunivar _ | Tvar _ ->
                     save_desc more more.desc;
-                    if s.for_saving then newpersty more.desc else
+                    if s.for_saving then newpersty (norm more.desc) else
                     if dup && is_Tvar more then newgenty more.desc else more
                 | _ -> assert false
               in
@@ -148,7 +199,7 @@ let rec typexp s ty =
               | None ->
                   Tvariant row
           end
-      | Tfield(label, kind, t1, t2) when field_kind_repr kind = Fabsent ->
+      | Tfield(_label, kind, _t1, t2) when field_kind_repr kind = Fabsent ->
           Tlink (typexp s t2)
       | _ -> copy_type_desc (typexp s) desc
       end;
@@ -163,6 +214,30 @@ let type_expr s ty =
   cleanup_types ();
   ty'
 
+let label_declaration s l =
+  {
+    ld_id = l.ld_id;
+    ld_mutable = l.ld_mutable;
+    ld_type = typexp s l.ld_type;
+    ld_loc = loc s l.ld_loc;
+    ld_attributes = attrs s l.ld_attributes;
+  }
+
+let constructor_arguments s = function
+  | Cstr_tuple l ->
+      Cstr_tuple (List.map (typexp s) l)
+  | Cstr_record l ->
+      Cstr_record (List.map (label_declaration s) l)
+
+let constructor_declaration s c =
+  {
+    cd_id = c.cd_id;
+    cd_args = constructor_arguments s c.cd_args;
+    cd_res = may_map (typexp s) c.cd_res;
+    cd_loc = loc s c.cd_loc;
+    cd_attributes = attrs s c.cd_attributes;
+  }
+
 let type_declaration s decl =
   let decl =
     { type_params = List.map (typexp s) decl.type_params;
@@ -171,15 +246,10 @@ let type_declaration s decl =
         begin match decl.type_kind with
           Type_abstract -> Type_abstract
         | Type_variant cstrs ->
-            Type_variant
-              (List.map
-                 (fun (n, args, ret_type) ->
-                   (n, List.map (typexp s) args, may_map (typexp s) ret_type))
-                 cstrs)
+            Type_variant (List.map (constructor_declaration s) cstrs)
         | Type_record(lbls, rep) ->
-            Type_record
-              (List.map (fun (n, mut, arg) -> (n, mut, typexp s arg)) lbls,
-               rep)
+            Type_record (List.map (label_declaration s) lbls, rep)
+        | Type_open -> Type_open
         end;
       type_manifest =
         begin
@@ -190,20 +260,23 @@ let type_declaration s decl =
       type_private = decl.type_private;
       type_variance = decl.type_variance;
       type_newtype_level = None;
-      type_loc = if s.for_saving then Location.none else decl.type_loc;
+      type_loc = loc s decl.type_loc;
+      type_attributes = attrs s decl.type_attributes;
+      type_immediate = decl.type_immediate;
+      type_unboxed = decl.type_unboxed;
     }
   in
   cleanup_types ();
   decl
 
 let class_signature s sign =
-  { cty_self = typexp s sign.cty_self;
-    cty_vars =
-      Vars.map (function (m, v, t) -> (m, v, typexp s t)) sign.cty_vars;
-    cty_concr = sign.cty_concr;
-    cty_inher =
+  { csig_self = typexp s sign.csig_self;
+    csig_vars =
+      Vars.map (function (m, v, t) -> (m, v, typexp s t)) sign.csig_vars;
+    csig_concr = sign.csig_concr;
+    csig_inher =
       List.map (fun (p, tl) -> (type_path s p, List.map (typexp s) tl))
-        sign.cty_inher
+        sign.csig_inher;
   }
 
 let rec class_type s =
@@ -212,8 +285,8 @@ let rec class_type s =
       Cty_constr (type_path s p, List.map (typexp s) tyl, class_type s cty)
   | Cty_signature sign ->
       Cty_signature (class_signature s sign)
-  | Cty_fun (l, ty, cty) ->
-      Cty_fun (l, typexp s ty, class_type s cty)
+  | Cty_arrow (l, ty, cty) ->
+      Cty_arrow (l, typexp s ty, class_type s cty)
 
 let class_declaration s decl =
   let decl =
@@ -225,7 +298,10 @@ let class_declaration s decl =
         begin match decl.cty_new with
           None    -> None
         | Some ty -> Some (typexp s ty)
-        end }
+        end;
+      cty_loc = loc s decl.cty_loc;
+      cty_attributes = attrs s decl.cty_attributes;
+    }
   in
   (* Do not clean up if saving: next is cltype_declaration *)
   if not s.for_saving then cleanup_types ();
@@ -236,7 +312,10 @@ let cltype_declaration s decl =
     { clty_params = List.map (typexp s) decl.clty_params;
       clty_variance = decl.clty_variance;
       clty_type = class_type s decl.clty_type;
-      clty_path = type_path s decl.clty_path }
+      clty_path = type_path s decl.clty_path;
+      clty_loc = loc s decl.clty_loc;
+      clty_attributes = attrs s decl.clty_attributes;
+    }
   in
   (* Do clean up even if saving: type_declaration may be recursive *)
   cleanup_types ();
@@ -250,28 +329,40 @@ let class_type s cty =
 let value_description s descr =
   { val_type = type_expr s descr.val_type;
     val_kind = descr.val_kind;
-    val_loc = if s.for_saving then Location.none else descr.val_loc;
+    val_loc = loc s descr.val_loc;
+    val_attributes = attrs s descr.val_attributes;
    }
 
-let exception_declaration s descr =
-  { exn_args = List.map (type_expr s) descr.exn_args;
-    exn_loc = if s.for_saving then Location.none else descr.exn_loc;
-   }
+let extension_constructor s ext =
+  let ext =
+    { ext_type_path = type_path s ext.ext_type_path;
+      ext_type_params = List.map (typexp s) ext.ext_type_params;
+      ext_args = constructor_arguments s ext.ext_args;
+      ext_ret_type = may_map (typexp s) ext.ext_ret_type;
+      ext_private = ext.ext_private;
+      ext_attributes = attrs s ext.ext_attributes;
+      ext_loc = if s.for_saving then Location.none else ext.ext_loc; }
+  in
+    cleanup_types ();
+    ext
 
 let rec rename_bound_idents s idents = function
     [] -> (List.rev idents, s)
-  | Sig_type(id, d, _) :: sg ->
+  | Sig_type(id, _, _) :: sg ->
       let id' = Ident.rename id in
       rename_bound_idents (add_type id (Pident id') s) (id' :: idents) sg
-  | Sig_module(id, mty, _) :: sg ->
+  | Sig_module(id, _, _) :: sg ->
       let id' = Ident.rename id in
       rename_bound_idents (add_module id (Pident id') s) (id' :: idents) sg
-  | Sig_modtype(id, d) :: sg ->
+  | Sig_modtype(id, _) :: sg ->
       let id' = Ident.rename id in
       rename_bound_idents (add_modtype id (Mty_ident(Pident id')) s)
                           (id' :: idents) sg
-  | (Sig_value(id, _) | Sig_exception(id, _) |
-     Sig_class(id, _, _) | Sig_class_type(id, _, _)) :: sg ->
+  | (Sig_class(id, _, _) | Sig_class_type(id, _, _)) :: sg ->
+      (* cheat and pretend they are types cf. PR#6650 *)
+      let id' = Ident.rename id in
+      rename_bound_idents (add_type id (Pident id') s) (id' :: idents) sg
+  | (Sig_value(id, _) | Sig_typext(id, _, _)) :: sg ->
       let id' = Ident.rename id in
       rename_bound_idents s (id' :: idents) sg
 
@@ -282,15 +373,17 @@ let rec modtype s = function
           begin try Tbl.find id s.modtypes with Not_found -> mty end
       | Pdot(p, n, pos) ->
           Mty_ident(Pdot(module_path s p, n, pos))
-      | Papply(p1, p2) ->
+      | Papply _ ->
           fatal_error "Subst.modtype"
       end
   | Mty_signature sg ->
       Mty_signature(signature s sg)
   | Mty_functor(id, arg, res) ->
       let id' = Ident.rename id in
-      Mty_functor(id', modtype s arg,
-                        modtype (add_module id (Pident id') s) res)
+      Mty_functor(id', may_map (modtype s) arg,
+                       modtype (add_module id (Pident id') s) res)
+  | Mty_alias(pres, p) ->
+      Mty_alias(pres, module_path s p)
 
 and signature s sg =
   (* Components of signature may be mutually recursive (e.g. type declarations
@@ -302,24 +395,34 @@ and signature s sg =
 
 and signature_component s comp newid =
   match comp with
-    Sig_value(id, d) ->
+    Sig_value(_id, d) ->
       Sig_value(newid, value_description s d)
-  | Sig_type(id, d, rs) ->
+  | Sig_type(_id, d, rs) ->
       Sig_type(newid, type_declaration s d, rs)
-  | Sig_exception(id, d) ->
-      Sig_exception(newid, exception_declaration s d)
-  | Sig_module(id, mty, rs) ->
-      Sig_module(newid, modtype s mty, rs)
-  | Sig_modtype(id, d) ->
+  | Sig_typext(_id, ext, es) ->
+      Sig_typext(newid, extension_constructor s ext, es)
+  | Sig_module(_id, d, rs) ->
+      Sig_module(newid, module_declaration s d, rs)
+  | Sig_modtype(_id, d) ->
       Sig_modtype(newid, modtype_declaration s d)
-  | Sig_class(id, d, rs) ->
+  | Sig_class(_id, d, rs) ->
       Sig_class(newid, class_declaration s d, rs)
-  | Sig_class_type(id, d, rs) ->
+  | Sig_class_type(_id, d, rs) ->
       Sig_class_type(newid, cltype_declaration s d, rs)
 
-and modtype_declaration s = function
-    Modtype_abstract -> Modtype_abstract
-  | Modtype_manifest mty -> Modtype_manifest(modtype s mty)
+and module_declaration s decl =
+  {
+    md_type = modtype s decl.md_type;
+    md_attributes = attrs s decl.md_attributes;
+    md_loc = loc s decl.md_loc;
+  }
+
+and modtype_declaration s decl  =
+  {
+    mtd_type = may_map (modtype s) decl.mtd_type;
+    mtd_attributes = attrs s decl.mtd_attributes;
+    mtd_loc = loc s decl.mtd_loc;
+  }
 
 (* For every binding k |-> d of m1, add k |-> f d to m2
    and return resulting merged map. *)
@@ -334,4 +437,4 @@ let compose s1 s2 =
   { types = merge_tbls (type_path s2) s1.types s2.types;
     modules = merge_tbls (module_path s2) s1.modules s2.modules;
     modtypes = merge_tbls (modtype s2) s1.modtypes s2.modtypes;
-    for_saving = false }
+    for_saving = s1.for_saving || s2.for_saving }

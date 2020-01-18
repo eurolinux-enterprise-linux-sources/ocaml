@@ -1,17 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*    Valerie Menissier-Morain, projet Cristal, INRIA Rocquencourt     *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the GNU Library General Public License, with    *)
-(*  the special exception on linking described in file ../../LICENSE.  *)
-(*                                                                     *)
-(***********************************************************************)
-
-(* $Id$ *)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*     Valerie Menissier-Morain, projet Cristal, INRIA Rocquencourt       *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Int_misc
 open Nat
@@ -30,14 +30,6 @@ let num_of_big_int bi =
  if le_big_int bi biggest_INT && ge_big_int bi least_INT
  then Int (int_of_big_int bi)
  else Big_int bi
-
-let numerator_num = function
-  Ratio r -> ignore (normalize_ratio r); num_of_big_int (numerator_ratio r)
-| n -> n
-
-let denominator_num = function
-  Ratio r -> ignore (normalize_ratio r); num_of_big_int (denominator_ratio r)
-| n -> Int 1
 
 let normalize_num = function
   Int i -> Int i
@@ -158,61 +150,75 @@ let div_num n1 n2 =
 let ( // ) = div_num
 
 let floor_num = function
-  Int i as n -> n
-| Big_int bi as n -> n
+  Int _ as n -> n
+| Big_int _ as n -> n
 | Ratio r -> num_of_big_int (floor_ratio r)
 
-(* The function [quo_num] is equivalent to
+(* Coercion with ratio type *)
+let ratio_of_num = function
+  Int i -> ratio_of_int i
+| Big_int bi -> ratio_of_big_int bi
+| Ratio r -> r
+;;
 
-  let quo_num x y = floor_num (div_num x y);;
+(* Euclidean division and remainder.  The specification is:
+
+      a = b * quo_num a b + mod_num a b
+      quo_num a b is an integer (Z)
+      0 <= mod_num a b < |b|
+
+A correct but slow implementation is:
+
+      quo_num a b =
+        if b >= 0 then floor_num (div_num a b)
+                  else minus_num (floor_num (div_num a (minus_num b)))
+
+      mod_num a b =
+        sub_num a (mult_num b (quo_num a b))
 
   However, this definition is vastly inefficient (cf PR #3473):
   we define here a better way of computing the same thing.
- *)
+
+  PR#6753: the previous implementation was based on
+    quo_num a b = floor_num (div_num a b)
+  which is incorrect for negative b.
+*)
+
 let quo_num n1 n2 =
- match n1 with
- | Int i1 ->
-   begin match n2 with
-   | Int i2 -> Int (i1 / i2)
-   | Big_int bi2 -> num_of_big_int (div_big_int (big_int_of_int i1) bi2)
-   | Ratio r2 -> num_of_big_int (floor_ratio (div_int_ratio i1 r2)) end
+  match n1, n2 with
+  | Int i1, Int i2 ->
+      let q = i1 / i2 and r = i1 mod i2 in
+      Int (if r >= 0 then q else if i2 > 0 then q - 1 else q + 1)
+  | Int i1, Big_int bi2 ->
+      num_of_big_int (div_big_int (big_int_of_int i1) bi2)
+  | Int i1, Ratio r2 ->
+      num_of_big_int (report_sign_ratio r2
+                         (floor_ratio (div_int_ratio i1 (abs_ratio r2))))
+  | Big_int bi1, Int i2 ->
+      num_of_big_int (div_big_int bi1 (big_int_of_int i2))
+  | Big_int bi1, Big_int bi2 ->
+      num_of_big_int (div_big_int bi1 bi2)
+  | Big_int bi1, Ratio r2 ->
+      num_of_big_int (report_sign_ratio r2
+                        (floor_ratio (div_big_int_ratio bi1 (abs_ratio r2))))
+  | Ratio r1, _ ->
+      let r2 = ratio_of_num n2 in
+      num_of_big_int (report_sign_ratio r2
+                        (floor_ratio (div_ratio r1 (abs_ratio r2))))
 
- | Big_int bi1 ->
-   begin match n2 with
-   | Int i2 -> num_of_big_int (div_big_int bi1 (big_int_of_int i2))
-   | Big_int bi2 -> num_of_big_int (div_big_int bi1 bi2)
-   | Ratio r2 -> num_of_big_int (floor_ratio (div_big_int_ratio bi1 r2)) end
-
- | Ratio r1 ->
-   begin match n2 with
-   | Int i2 -> num_of_big_int (floor_ratio (div_ratio_int r1 i2))
-   | Big_int bi2 -> num_of_big_int (floor_ratio (div_ratio_big_int r1 bi2))
-   | Ratio r2 -> num_of_big_int (floor_ratio (div_ratio r1 r2)) end
-;;
-
-(* The function [mod_num] is equivalent to:
-
-  let mod_num x y = sub_num x (mult_num y (quo_num x y));;
-
-  However, as for [quo_num] above, this definition is inefficient:
-  we define here a better way of computing the same thing.
- *)
 let mod_num n1 n2 =
- match n1 with
- | Int i1 ->
-   begin match n2 with
-   | Int i2 -> Int (i1 mod i2)
-   | Big_int bi2 -> num_of_big_int (mod_big_int (big_int_of_int i1) bi2)
-   | Ratio _r2 -> sub_num n1 (mult_num n2 (quo_num n1 n2)) end
-
- | Big_int bi1 ->
-   begin match n2 with
-   | Int i2 -> num_of_big_int (mod_big_int bi1 (big_int_of_int i2))
-   | Big_int bi2 -> num_of_big_int (mod_big_int bi1 bi2)
-   | Ratio _r2 -> sub_num n1 (mult_num n2 (quo_num n1 n2)) end
-
- | Ratio _r1 -> sub_num n1 (mult_num n2 (quo_num n1 n2))
-;;
+  match n1, n2 with
+  | Int i1, Int i2 ->
+      let r = i1 mod i2 in
+      Int (if r >= 0 then r else if i2 > 0 then r + i2 else r - i2)
+  | Int i1, Big_int bi2 ->
+      num_of_big_int (mod_big_int (big_int_of_int i1) bi2)
+  | Big_int bi1, Int i2 ->
+      num_of_big_int (mod_big_int bi1 (big_int_of_int i2))
+  | Big_int bi1, Big_int bi2 ->
+      num_of_big_int (mod_big_int bi1 bi2)
+  | _, _ ->
+      sub_num n1 (mult_num n2 (quo_num n1 n2))
 
 let power_num_int a b = match (a,b) with
    ((Int i), n) ->
@@ -270,18 +276,18 @@ let is_integer_num = function
 
 (* integer_num, floor_num, round_num, ceiling_num rendent des nums *)
 let integer_num = function
-  Int i as n -> n
-| Big_int bi as n -> n
+  Int _ as n -> n
+| Big_int _ as n -> n
 | Ratio r -> num_of_big_int (integer_ratio r)
 
 and round_num = function
-  Int i as n -> n
-| Big_int bi as n -> n
+  Int _ as n -> n
+| Big_int _ as n -> n
 | Ratio r -> num_of_big_int (round_ratio r)
 
 and ceiling_num = function
-  Int i as n -> n
-| Big_int bi as n -> n
+  Int _ as n -> n
+| Big_int _ as n -> n
 | Ratio r -> num_of_big_int (ceiling_ratio r)
 
 (* Comparisons on nums *)
@@ -348,6 +354,11 @@ let int_of_num = function
 | Big_int bi -> int_of_big_int bi
 | Ratio r -> int_of_ratio r
 
+let int_of_num_opt = function
+  Int i -> Some i
+| Big_int bi -> int_of_big_int_opt bi
+| Ratio r -> (try Some (int_of_ratio r) with Failure _ -> None)
+
 and num_of_int i =
   if i = monster_int
   then Big_int (big_int_of_int i)
@@ -364,18 +375,17 @@ and num_of_nat nat =
   then Int (nth_digit_nat nat 0)
   else Big_int (big_int_of_nat nat)
 
+let nat_of_num_opt x =
+  try Some (nat_of_num x) with Failure _ -> None
+
 (* Coercion with big_int type *)
 let big_int_of_num = function
   Int i -> big_int_of_int i
 | Big_int bi -> bi
 | Ratio r -> big_int_of_ratio r
 
-(* Coercion with ratio type *)
-let ratio_of_num = function
-  Int i -> ratio_of_int i
-| Big_int bi -> ratio_of_big_int bi
-| Ratio r -> r
-;;
+let big_int_of_num_opt x =
+  try Some (big_int_of_num x) with Failure _ -> None
 
 let string_of_big_int_for_num bi =
   if !approx_printing_flag
@@ -384,14 +394,13 @@ let string_of_big_int_for_num bi =
 
 (* Coercion with string type *)
 
-(* XL: suppression de sys_string_of_num *)
-
 let string_of_normalized_num = function
   Int i -> string_of_int i
 | Big_int bi -> string_of_big_int_for_num bi
 | Ratio r -> string_of_ratio r
 let string_of_num n =
     string_of_normalized_num (cautious_normalize_num_when_printing n)
+
 let num_of_string s =
   try
     let flag = !normalize_ratio_flag in
@@ -404,13 +413,14 @@ let num_of_string s =
   with Failure _ ->
     failwith "num_of_string"
 
+let num_of_string_opt s =
+  try Some (num_of_string s) with Failure _ -> None
+
 (* Coercion with float type *)
 let float_of_num = function
   Int i -> float i
 | Big_int bi -> float_of_big_int bi
 | Ratio r -> float_of_ratio r
-
-(* XL: suppression de num_of_float, float_num *)
 
 let succ_num = function
   Int i -> if i = biggest_int

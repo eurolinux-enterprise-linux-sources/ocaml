@@ -1,28 +1,32 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../LICENSE.     */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
+
+#define CAML_INTERNALS
 
 /* Print an uncaught exception and abort */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "backtrace.h"
-#include "callback.h"
-#include "debugger.h"
-#include "fail.h"
-#include "misc.h"
-#include "mlvalues.h"
-#include "printexc.h"
+#include "caml/backtrace.h"
+#include "caml/callback.h"
+#include "caml/debugger.h"
+#include "caml/fail.h"
+#include "caml/misc.h"
+#include "caml/mlvalues.h"
+#include "caml/printexc.h"
 
 struct stringbuf {
   char * ptr;
@@ -53,8 +57,8 @@ CAMLexport char * caml_format_exception(value exn)
 
   buf.ptr = buf.data;
   buf.end = buf.data + sizeof(buf.data) - 1;
-  add_string(&buf, String_val(Field(Field(exn, 0), 0)));
-  if (Wosize_val(exn) >= 2) {
+  if (Tag_val(exn) == 0) {
+    add_string(&buf, String_val(Field(Field(exn, 0), 0)));
     /* Check for exceptions in the style of Match_failure and Assert_failure */
     if (Wosize_val(exn) == 2 &&
         Is_block(Field(exn, 1)) &&
@@ -71,7 +75,8 @@ CAMLexport char * caml_format_exception(value exn)
       if (i > start) add_string(&buf, ", ");
       v = Field(bucket, i);
       if (Is_long(v)) {
-        sprintf(intbuf, "%" ARCH_INTNAT_PRINTF_FORMAT "d", Long_val(v));
+        snprintf(intbuf, sizeof(intbuf),
+                 "%" ARCH_INTNAT_PRINTF_FORMAT "d", Long_val(v));
         add_string(&buf, intbuf);
       } else if (Tag_val(v) == String_tag) {
         add_char(&buf, '"');
@@ -82,7 +87,9 @@ CAMLexport char * caml_format_exception(value exn)
       }
     }
     add_char(&buf, ')');
-  }
+  } else
+    add_string(&buf, String_val(Field(exn, 0)));
+
   *buf.ptr = 0;              /* Terminate string */
   i = buf.ptr - buf.data + 1;
   res = malloc(i);
@@ -92,7 +99,14 @@ CAMLexport char * caml_format_exception(value exn)
 }
 
 
-void caml_fatal_uncaught_exception(value exn)
+#ifdef NATIVE_CODE
+#  define DEBUGGER_IN_USE 0
+#else
+#  define DEBUGGER_IN_USE caml_debugger_in_use
+#endif
+
+/* Default C implementation in case the OCaml one is not registered. */
+static void default_fatal_uncaught_exception(value exn)
 {
   char * msg;
   value * at_exit;
@@ -113,13 +127,28 @@ void caml_fatal_uncaught_exception(value exn)
   fprintf(stderr, "Fatal error: exception %s\n", msg);
   free(msg);
   /* Display the backtrace if available */
-  if (caml_backtrace_active
-#ifndef NATIVE_CODE
-      && !caml_debugger_in_use
-#endif
-      ) {
+  if (caml_backtrace_active && !DEBUGGER_IN_USE)
     caml_print_exception_backtrace();
-  }
+}
+
+int caml_abort_on_uncaught_exn = 0; /* see afl.c */
+
+void caml_fatal_uncaught_exception(value exn)
+{
+  value *handle_uncaught_exception;
+
+  handle_uncaught_exception =
+    caml_named_value("Printexc.handle_uncaught_exception");
+  if (handle_uncaught_exception != NULL)
+    /* [Printexc.handle_uncaught_exception] does not raise exception. */
+    caml_callback2(*handle_uncaught_exception, exn, Val_bool(DEBUGGER_IN_USE));
+  else
+    default_fatal_uncaught_exception(exn);
   /* Terminate the process */
-  exit(2);
+  if (caml_abort_on_uncaught_exn) {
+    abort();
+  } else {
+    CAML_SYS_EXIT(2);
+    exit(2); /* Second exit needed for the Noreturn flag */
+  }
 }

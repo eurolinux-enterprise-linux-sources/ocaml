@@ -1,15 +1,18 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*          Jerome Vouillon, projet Cristal, INRIA Rocquencourt        *)
-(*          OCaml port by John Malecki and Xavier Leroy                *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*           Jerome Vouillon, projet Cristal, INRIA Rocquencourt          *)
+(*           OCaml port by John Malecki and Xavier Leroy                  *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Handling of symbol tables (globals and events) *)
 
@@ -17,7 +20,12 @@ open Instruct
 open Debugger_config (* Toplevel *)
 open Program_loading
 
+module StringSet = Set.Make(String)
+
 let modules =
+  ref ([] : string list)
+
+let program_source_dirs =
   ref ([] : string list)
 
 let events =
@@ -52,13 +60,16 @@ let read_symbols' bytecode_file =
     raise Toplevel
   end;
   let num_eventlists = input_binary_int ic in
+  let dirs = ref StringSet.empty in
   let eventlists = ref [] in
-  for i = 1 to num_eventlists do
+  for _i = 1 to num_eventlists do
     let orig = input_binary_int ic in
     let evl = (input_value ic : debug_event list) in
     (* Relocate events in event list *)
     List.iter (relocate_event orig) evl;
-    eventlists := evl :: !eventlists
+    eventlists := evl :: !eventlists;
+    dirs :=
+      List.fold_left (fun s e -> StringSet.add e s) !dirs (input_value ic)
   done;
   begin try
     ignore (Bytesections.seek_section ic "CODE")
@@ -68,12 +79,13 @@ let read_symbols' bytecode_file =
     set_launching_function (List.assoc "manual" loading_modes)
   end;
   close_in_noerr ic;
-  !eventlists
+  !eventlists, !dirs
 
 let read_symbols bytecode_file =
-  let all_events = read_symbols' bytecode_file in
+  let all_events, all_dirs = read_symbols' bytecode_file in
 
   modules := []; events := [];
+  program_source_dirs := StringSet.elements all_dirs;
   Hashtbl.clear events_by_pc; Hashtbl.clear events_by_module;
   Hashtbl.clear all_events_by_module;
 
@@ -170,7 +182,7 @@ let event_near_pos md char =
 (* Flip "event" bit on all instructions *)
 let set_all_events () =
   Hashtbl.iter
-    (fun pc ev ->
+    (fun _pc ev ->
        match ev.ev_kind with
          Event_pseudo -> ()
        | _            -> Debugcom.set_event ev.ev_pos)

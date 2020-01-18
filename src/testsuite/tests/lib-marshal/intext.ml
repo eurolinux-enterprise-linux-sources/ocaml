@@ -1,15 +1,3 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
-
 (* Test for output_value / input_value *)
 
 let max_data_depth = 500000
@@ -230,7 +218,8 @@ let test_string () =
       t1 == t2 && t3 == t5 && t4 == t1
   | _ -> false);
   let s = Marshal.to_string [|1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16|] [] in
-  test 122 (Marshal.from_string s 0 = [|1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16|]);
+  test 122
+       (Marshal.from_string s 0 = [|1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16|]);
   let rec big n = if n <= 0 then A else H(n, big(n-1)) in
   let s = Marshal.to_string (big 1000) [] in
   let rec check_big n t =
@@ -248,84 +237,85 @@ let marshal_to_buffer s start len v flags =
 ;;
 
 let test_buffer () =
-  let s = String.create 512 in
+  let s = Bytes.create 512 in
   marshal_to_buffer s 0 512 1 [];
-  test 201 (Marshal.from_string s 0 = 1);
+  test 201 (Marshal.from_bytes s 0 = 1);
   marshal_to_buffer s 0 512 (-1) [];
-  test 202 (Marshal.from_string s 0 = (-1));
+  test 202 (Marshal.from_bytes s 0 = (-1));
   marshal_to_buffer s 0 512 258 [];
-  test 203 (Marshal.from_string s 0 = 258);
+  test 203 (Marshal.from_bytes s 0 = 258);
   marshal_to_buffer s 0 512 20000 [];
-  test 204 (Marshal.from_string s 0 = 20000);
+  test 204 (Marshal.from_bytes s 0 = 20000);
   marshal_to_buffer s 0 512 0x12345678 [];
-  test 205 (Marshal.from_string s 0 = 0x12345678);
+  test 205 (Marshal.from_bytes s 0 = 0x12345678);
   marshal_to_buffer s 0 512 bigint [];
-  test 206 (Marshal.from_string s 0 = bigint);
+  test 206 (Marshal.from_bytes s 0 = bigint);
   marshal_to_buffer s 0 512 "foobargeebuz" [];
-  test 207 (Marshal.from_string s 0 = "foobargeebuz");
+  test 207 (Marshal.from_bytes s 0 = "foobargeebuz");
   marshal_to_buffer s 0 512 longstring [];
-  test 208 (Marshal.from_string s 0 = longstring);
+  test 208 (Marshal.from_bytes s 0 = longstring);
   test 209
     (try marshal_to_buffer s 0 512 verylongstring []; false
-     with Failure "Marshal.to_buffer: buffer overflow" -> true);
+     with Failure s when s = "Marshal.to_buffer: buffer overflow" -> true);
   marshal_to_buffer s 0 512 3.141592654 [];
-  test 210 (Marshal.from_string s 0 = 3.141592654);
+  test 210 (Marshal.from_bytes s 0 = 3.141592654);
   marshal_to_buffer s 0 512 () [];
-  test 211 (Marshal.from_string s 0 = ());
+  test 211 (Marshal.from_bytes s 0 = ());
   marshal_to_buffer s 0 512 A [];
-  test 212 (match Marshal.from_string s 0 with
+  test 212 (match Marshal.from_bytes s 0 with
     A -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (B 1) [];
-  test 213 (match Marshal.from_string s 0 with
+  test 213 (match Marshal.from_bytes s 0 with
     (B 1) -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (C 2.718) [];
-  test 214 (match Marshal.from_string s 0 with
+  test 214 (match Marshal.from_bytes s 0 with
     (C f) -> f = 2.718
   | _ -> false);
   marshal_to_buffer s 0 512 (D "hello, world!") [];
-  test 215 (match Marshal.from_string s 0 with
+  test 215 (match Marshal.from_bytes s 0 with
     (D "hello, world!") -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (E 'l') [];
-  test 216 (match Marshal.from_string s 0 with
+  test 216 (match Marshal.from_bytes s 0 with
     (E 'l') -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (F(B 1)) [];
-  test 217 (match Marshal.from_string s 0 with
+  test 217 (match Marshal.from_bytes s 0 with
     (F(B 1)) -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (G(A, G(B 2, G(C 3.14, G(D "glop", E 'e'))))) [];
-  test 218 (match Marshal.from_string s 0 with
+  test 218 (match Marshal.from_bytes s 0 with
     (G(A, G(B 2, G(C 3.14, G(D "glop", E 'e'))))) -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (H(1, A)) [];
-  test 219 (match Marshal.from_string s 0 with
+  test 219 (match Marshal.from_bytes s 0 with
     (H(1, A)) -> true
   | _ -> false);
   marshal_to_buffer s 0 512 (I(B 2, 1e-6)) [];
-  test 220 (match Marshal.from_string s 0 with
+  test 220 (match Marshal.from_bytes s 0 with
     (I(B 2, 1e-6)) -> true
   | _ -> false);
   let x = D "sharing" in
   let y = G(x, x) in
   let z = G(y, G(x, y)) in
   marshal_to_buffer s 0 512 z [];
-  test 221 (match Marshal.from_string s 0 with
+  test 221 (match Marshal.from_bytes s 0 with
     G((G((D "sharing" as t1), t2) as t3), G(t4, t5)) ->
       t1 == t2 && t3 == t5 && t4 == t1
   | _ -> false);
   marshal_to_buffer s 0 512 [|1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16|] [];
-  test 222 (Marshal.from_string s 0 = [|1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16|]);
+  test 222
+       (Marshal.from_bytes s 0 = [|1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16|]);
   let rec big n = if n <= 0 then A else H(n, big(n-1)) in
   test 223
     (try marshal_to_buffer s 0 512 (big 1000) []; false
-     with Failure "Marshal.to_buffer: buffer overflow" -> true)
+     with Failure s when s = "Marshal.to_buffer: buffer overflow" -> true)
 
 let test_size() =
-  let s = Marshal.to_string (G(A, G(B 2, G(C 3.14, G(D "glop", E 'e'))))) [] in
-  test 300 (Marshal.header_size + Marshal.data_size s 0 = String.length s)
+  let s = Marshal.to_bytes (G(A, G(B 2, G(C 3.14, G(D "glop", E 'e'))))) [] in
+  test 300 (Marshal.header_size + Marshal.data_size s 0 = Bytes.length s)
 
 external marshal_to_block
    : string -> int -> 'a -> Marshal.extern_flags list -> unit
@@ -353,7 +343,7 @@ let test_block () =
   test 408 (marshal_from_block s 512 = longstring);
   test 409
     (try marshal_to_block s 512 verylongstring []; false
-     with Failure "Marshal.to_buffer: buffer overflow" -> true);
+     with Failure s when s = "Marshal.to_buffer: buffer overflow" -> true);
   marshal_to_block s 512 3.141592654 [];
   test 410 (marshal_from_block s 512 = 3.141592654);
   marshal_to_block s 512 () [];
@@ -547,11 +537,48 @@ let test_mutual_rec_regression () =
   test 700 (try ignore (Marshal.to_string f [Marshal.Closures]); true
             with _ -> false)
 
+let test_end_of_file_regression () =
+  (* See PR#7142 *)
+  let write oc n =
+    for k = 0 to n - 1 do
+      Marshal.to_channel oc k []
+    done
+  in
+  let read ic n =
+    let k = ref 0 in
+    try
+      while true do
+        if Marshal.from_channel ic != !k then
+          failwith "unexpected integer";
+        incr k
+      done
+    with
+      | End_of_file when !k != n -> failwith "missing integer"
+      | End_of_file -> ()
+  in
+  test 800 (
+    try
+      let n = 100 in
+      let oc = open_out_bin "intext.data" in
+      write oc n;
+      close_out oc;
+
+      let ic = open_in_bin "intext.data" in
+      try
+        read ic n;
+        close_in ic;
+        true
+      with _ ->
+        close_in ic;
+        false
+    with _ -> false
+  )
+
+
 let main() =
   if Array.length Sys.argv <= 2 then begin
     test_out "intext.data"; test_in "intext.data";
     test_out "intext.data"; test_in "intext.data";
-    Sys.remove "intext.data";
     test_string();
     test_buffer();
     test_size();
@@ -560,6 +587,8 @@ let main() =
     test_objects();
     test_infix ();
     test_mutual_rec_regression ();
+    test_end_of_file_regression ();
+    Sys.remove "intext.data";
   end else
   if Sys.argv.(1) = "make" then begin
     let n = int_of_string Sys.argv.(2) in

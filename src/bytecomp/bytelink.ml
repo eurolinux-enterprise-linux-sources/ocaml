@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 1996 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 (* Link a set of .cmo files and produce a bytecode executable. *)
 
@@ -26,6 +29,7 @@ type error =
   | File_exists of string
   | Cannot_open_dll of string
   | Not_compatible_32
+  | Required_module_unavailable of string
 
 exception Error of error
 
@@ -42,7 +46,7 @@ let lib_ccobjs = ref []
 let lib_ccopts = ref []
 let lib_dllibs = ref []
 
-let add_ccobjs l =
+let add_ccobjs origin l =
   if not !Clflags.no_auto_link then begin
     if
       String.length !Clflags.use_runtime = 0
@@ -50,7 +54,10 @@ let add_ccobjs l =
     then begin
       if l.lib_custom then Clflags.custom_runtime := true;
       lib_ccobjs := l.lib_ccobjs @ !lib_ccobjs;
-      lib_ccopts := l.lib_ccopts @ !lib_ccopts;
+      let replace_origin =
+        Misc.replace_substring ~before:"$CAMLORIGIN" ~after:origin
+      in
+      lib_ccopts := List.map replace_origin l.lib_ccopts @ !lib_ccopts;
     end;
     lib_dllibs := l.lib_dllibs @ !lib_dllibs
   end
@@ -79,27 +86,30 @@ let add_ccobjs l =
 
 (* First pass: determine which units are needed *)
 
-module IdentSet =
-  Set.Make(struct
-    type t = Ident.t
-    let compare = compare
-  end)
+module IdentSet = Lambda.IdentSet
 
 let missing_globals = ref IdentSet.empty
 
-let is_required (rel, pos) =
+let is_required (rel, _pos) =
   match rel with
     Reloc_setglobal id ->
       IdentSet.mem id !missing_globals
   | _ -> false
 
-let add_required (rel, pos) =
-  match rel with
-    Reloc_getglobal id ->
-      missing_globals := IdentSet.add id !missing_globals
-  | _ -> ()
+let add_required compunit =
+  let add_required_by_reloc (rel, _pos) =
+    match rel with
+      Reloc_getglobal id ->
+        missing_globals := IdentSet.add id !missing_globals
+    | _ -> ()
+  in
+  let add_required_for_effects id =
+    missing_globals := IdentSet.add id !missing_globals
+  in
+  List.iter add_required_by_reloc compunit.cu_reloc;
+  List.iter add_required_for_effects compunit.cu_required_globals
 
-let remove_required (rel, pos) =
+let remove_required (rel, _pos) =
   match rel with
     Reloc_setglobal id ->
       missing_globals := IdentSet.remove id !missing_globals
@@ -113,7 +123,7 @@ let scan_file obj_name tolink =
       raise(Error(File_not_found obj_name)) in
   let ic = open_in_bin file_name in
   try
-    let buffer = input_bytes ic (String.length cmo_magic_number) in
+    let buffer = really_input_string ic (String.length cmo_magic_number) in
     if buffer = cmo_magic_number then begin
       (* This is a .cmo file. It must be linked in any case.
          Read the relocation information to see which modules it
@@ -122,7 +132,8 @@ let scan_file obj_name tolink =
       seek_in ic compunit_pos;
       let compunit = (input_value ic : compilation_unit) in
       close_in ic;
-      List.iter add_required compunit.cu_reloc;
+      add_required compunit;
+      List.iter remove_required compunit.cu_reloc;
       Link_object(file_name, compunit) :: tolink
     end
     else if buffer = cma_magic_number then begin
@@ -132,7 +143,7 @@ let scan_file obj_name tolink =
       seek_in ic pos_toc;
       let toc = (input_value ic : library) in
       close_in ic;
-      add_ccobjs toc;
+      add_ccobjs (Filename.dirname file_name) toc;
       let required =
         List.fold_right
           (fun compunit reqd ->
@@ -140,8 +151,8 @@ let scan_file obj_name tolink =
             || !Clflags.link_everything
             || List.exists is_required compunit.cu_reloc
             then begin
+              add_required compunit;
               List.iter remove_required compunit.cu_reloc;
-              List.iter add_required compunit.cu_reloc;
               compunit :: reqd
             end else
               reqd)
@@ -158,15 +169,20 @@ let scan_file obj_name tolink =
 (* Consistency check between interfaces *)
 
 let crc_interfaces = Consistbl.create ()
+let interfaces = ref ([] : string list)
 let implementations_defined = ref ([] : (string * string) list)
 
 let check_consistency ppf file_name cu =
   begin try
     List.iter
-      (fun (name, crc) ->
-        if name = cu.cu_name
-        then Consistbl.set crc_interfaces name crc file_name
-        else Consistbl.check crc_interfaces name crc file_name)
+      (fun (name, crco) ->
+        interfaces := name :: !interfaces;
+        match crco with
+          None -> ()
+        | Some crc ->
+            if name = cu.cu_name
+            then Consistbl.set crc_interfaces name crc file_name
+            else Consistbl.check crc_interfaces name crc file_name)
       cu.cu_imports
   with Consistbl.Inconsistency(name, user, auth) ->
     raise(Error(Inconsistent_import(name, user, auth)))
@@ -183,11 +199,15 @@ let check_consistency ppf file_name cu =
     (cu.cu_name, file_name) :: !implementations_defined
 
 let extract_crc_interfaces () =
-  Consistbl.extract crc_interfaces
+  Consistbl.extract !interfaces crc_interfaces
+
+let clear_crc_interfaces () =
+  Consistbl.clear crc_interfaces;
+  interfaces := []
 
 (* Record compilation events *)
 
-let debug_info = ref ([] : (int * LongString.t) list)
+let debug_info = ref ([] : (int * Instruct.debug_event list * string list) list)
 
 (* Link in a compilation unit *)
 
@@ -198,8 +218,14 @@ let link_compunit ppf output_fun currpos_fun inchan file_name compunit =
   Symtable.ls_patch_object code_block compunit.cu_reloc;
   if !Clflags.debug && compunit.cu_debug > 0 then begin
     seek_in inchan compunit.cu_debug;
-    let buffer = LongString.input_bytes inchan compunit.cu_debugsize in
-    debug_info := (currpos_fun(), buffer) :: !debug_info
+    let debug_event_list : Instruct.debug_event list = input_value inchan in
+    let debug_dirs : string list = input_value inchan in
+    let file_path = Filename.dirname (Location.absolute_path file_name) in
+    let debug_dirs =
+      if List.mem file_path debug_dirs
+      then debug_dirs
+      else file_path :: debug_dirs in
+    debug_info := (currpos_fun(), debug_event_list, debug_dirs) :: !debug_info
   end;
   Array.iter output_fun code_block;
   if !Clflags.link_everything then
@@ -254,9 +280,10 @@ let link_file ppf output_fun currpos_fun = function
 let output_debug_info oc =
   output_binary_int oc (List.length !debug_info);
   List.iter
-    (fun (ofs, evl) ->
+    (fun (ofs, evl, debug_dirs) ->
       output_binary_int oc ofs;
-      Array.iter (output_string oc) evl)
+      output_value oc evl;
+      output_value oc debug_dirs)
     !debug_info;
   debug_info := []
 
@@ -307,19 +334,20 @@ let link_bytecode ppf tolink exec_name standalone =
     (* The bytecode *)
     let start_code = pos_out outchan in
     Symtable.init();
-    Consistbl.clear crc_interfaces;
+    clear_crc_interfaces ();
     let sharedobjs = List.map Dll.extract_dll_name !Clflags.dllibs in
-    if standalone then begin
+    let check_dlls = standalone && Config.target = Config.host in
+    if check_dlls then begin
       (* Initialize the DLL machinery *)
       Dll.init_compile !Clflags.no_std_include;
       Dll.add_path !load_path;
       try Dll.open_dlls Dll.For_checking sharedobjs
       with Failure reason -> raise(Error(Cannot_open_dll reason))
     end;
-    let output_fun = output_string outchan
+    let output_fun = output_bytes outchan
     and currpos_fun () = pos_out outchan - start_code in
     List.iter (link_file ppf output_fun currpos_fun) tolink;
-    if standalone then Dll.close_all_dlls();
+    if check_dlls then Dll.close_all_dlls();
     (* The final STOP instruction *)
     output_byte outchan Opcodes.opSTOP;
     output_byte outchan 0; output_byte outchan 0; output_byte outchan 0;
@@ -370,12 +398,12 @@ let output_code_string_counter = ref 0
 
 let output_code_string outchan code =
   let pos = ref 0 in
-  let len = String.length code in
+  let len = Bytes.length code in
   while !pos < len do
-    let c1 = Char.code(code.[!pos]) in
-    let c2 = Char.code(code.[!pos + 1]) in
-    let c3 = Char.code(code.[!pos + 2]) in
-    let c4 = Char.code(code.[!pos + 3]) in
+    let c1 = Char.code(Bytes.get code !pos) in
+    let c2 = Char.code(Bytes.get code (!pos + 1)) in
+    let c3 = Char.code(Bytes.get code (!pos + 2)) in
+    let c4 = Char.code(Bytes.get code (!pos + 3)) in
     pos := !pos + 4;
     Printf.fprintf outchan "0x%02x%02x%02x%02x, " c4 c3 c2 c1;
     incr output_code_string_counter;
@@ -439,11 +467,11 @@ let link_bytecode_as_c ppf tolink outfile =
 \n           char **argv);\n";
     output_string outchan "static int caml_code[] = {\n";
     Symtable.init();
-    Consistbl.clear crc_interfaces;
+    clear_crc_interfaces ();
     let currpos = ref 0 in
     let output_fun code =
       output_code_string outchan code;
-      currpos := !currpos + String.length code
+      currpos := !currpos + Bytes.length code
     and currpos_fun () = !currpos in
     List.iter (link_file ppf output_fun currpos_fun) tolink;
     (* The final STOP instruction *)
@@ -472,6 +500,13 @@ let link_bytecode_as_c ppf tolink outfile =
 \n                    caml_data, sizeof(caml_data),\
 \n                    caml_sections, sizeof(caml_sections),\
 \n                    argv);\
+\n}\
+\nvalue caml_startup_exn(char ** argv)\
+\n{\
+\n  return caml_startup_code_exn(caml_code, sizeof(caml_code),\
+\n                               caml_data, sizeof(caml_data),\
+\n                               caml_sections, sizeof(caml_sections),\
+\n                               argv);\
 \n}\
 \n#ifdef __cplusplus\
 \n}\
@@ -519,6 +554,14 @@ let link ppf objfiles output_name =
     else if !Clflags.output_c_object then "stdlib.cma" :: objfiles
     else "stdlib.cma" :: (objfiles @ ["std_exit.cmo"]) in
   let tolink = List.fold_right scan_file objfiles [] in
+  let missing_modules =
+    IdentSet.filter (fun id -> not (Ident.is_predef_exn id)) !missing_globals
+  in
+  begin
+    match IdentSet.elements missing_modules with
+    | [] -> ()
+    | id :: _ -> raise (Error (Required_module_unavailable (Ident.name id)))
+  end;
   Clflags.ccobjs := !Clflags.ccobjs @ !lib_ccobjs; (* put user's libs last *)
   Clflags.all_ccopts := !lib_ccopts @ !Clflags.all_ccopts;
                                                    (* put user's opts first *)
@@ -562,22 +605,36 @@ let link ppf objfiles output_name =
       raise x
   end else begin
     let basename = Filename.chop_extension output_name in
-    let c_file = basename ^ ".c"
-    and obj_file = basename ^ Config.ext_obj in
+    let c_file =
+      if !Clflags.output_complete_object
+      then Filename.temp_file "camlobj" ".c"
+      else basename ^ ".c"
+    and obj_file =
+      if !Clflags.output_complete_object
+      then Filename.temp_file "camlobj" Config.ext_obj
+      else basename ^ Config.ext_obj
+    in
     if Sys.file_exists c_file then raise(Error(File_exists c_file));
     let temps = ref [] in
     try
       link_bytecode_as_c ppf tolink c_file;
       if not (Filename.check_suffix output_name ".c") then begin
         temps := c_file :: !temps;
-        if Ccomp.compile_file c_file <> 0 then raise(Error Custom_runtime);
-        if not (Filename.check_suffix output_name Config.ext_obj) then begin
+        if Ccomp.compile_file c_file <> 0 then
+          raise(Error Custom_runtime);
+        if not (Filename.check_suffix output_name Config.ext_obj) ||
+           !Clflags.output_complete_object then begin
           temps := obj_file :: !temps;
+          let mode, c_libs =
+            if Filename.check_suffix output_name Config.ext_obj
+            then Ccomp.Partial, ""
+            else Ccomp.MainDll, Config.bytecomp_c_libraries
+          in
           if not (
             let runtime_lib = "-lcamlrun" ^ !Clflags.runtime_variant in
-            Ccomp.call_linker Ccomp.MainDll output_name
+            Ccomp.call_linker mode output_name
               ([obj_file] @ List.rev !Clflags.ccobjs @ [runtime_lib])
-              Config.bytecomp_c_libraries
+              c_libs
            ) then raise (Error Custom_runtime);
         end
       end;
@@ -621,3 +678,22 @@ let report_error ppf = function
   | Not_compatible_32 ->
       fprintf ppf "Generated bytecode executable cannot be run\
                   \ on a 32-bit platform"
+  | Required_module_unavailable s ->
+      fprintf ppf "Required module `%s' is unavailable" s
+
+let () =
+  Location.register_error_of_exn
+    (function
+      | Error err -> Some (Location.error_of_printer_file report_error err)
+      | _ -> None
+    )
+
+let reset () =
+  lib_ccobjs := [];
+  lib_ccopts := [];
+  lib_dllibs := [];
+  missing_globals := IdentSet.empty;
+  Consistbl.clear crc_interfaces;
+  implementations_defined := [];
+  debug_info := [];
+  output_code_string_counter := 0

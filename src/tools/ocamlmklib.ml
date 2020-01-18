@@ -1,14 +1,17 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 2001 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
+(**************************************************************************)
+(*                                                                        *)
+(*                                 OCaml                                  *)
+(*                                                                        *)
+(*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           *)
+(*                                                                        *)
+(*   Copyright 2001 Institut National de Recherche en Informatique et     *)
+(*     en Automatique.                                                    *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU Lesser General Public License version 2.1, with the          *)
+(*   special exception on linking described in the file LICENSE.          *)
+(*                                                                        *)
+(**************************************************************************)
 
 open Printf
 open Ocamlmklibconfig
@@ -20,21 +23,24 @@ let compiler_path name =
 
 let bytecode_objs = ref []  (* .cmo,.cma,.ml,.mli files to pass to ocamlc *)
 and native_objs = ref []    (* .cmx,.cmxa,.ml,.mli files to pass to ocamlopt *)
-and c_objs = ref []         (* .o, .a, .obj, .lib, .dll files to pass
-                               to mksharedlib and ar *)
+and c_objs = ref []         (* .o, .a, .obj, .lib, .dll, .dylib, .so files to
+                               pass to mksharedlib and ar *)
 and caml_libs = ref []      (* -cclib to pass to ocamlc, ocamlopt *)
 and caml_opts = ref []      (* -ccopt to pass to ocamlc, ocamlopt *)
 and dynlink = ref supports_shared_libraries
 and failsafe = ref false    (* whether to fall back on static build only *)
 and c_libs = ref []         (* libs to pass to mksharedlib and ocamlc -cclib *)
 and c_Lopts = ref []      (* options to pass to mksharedlib and ocamlc -cclib *)
-and c_opts = ref []      (* options to pass to mksharedlib and ocamlc -ccopt *)
+and c_opts = ref []       (* options to pass to mksharedlib and ocamlc -ccopt *)
 and ld_opts = ref []        (* options to pass only to the linker *)
 and ocamlc = ref (compiler_path "ocamlc")
+and ocamlc_opts = ref []    (* options to pass only to ocamlc *)
 and ocamlopt = ref (compiler_path "ocamlopt")
+and ocamlopt_opts = ref []  (* options to pass only to ocamlc *)
 and output = ref "a"        (* Output name for OCaml part of library *)
 and output_c = ref ""       (* Output name for C part of library *)
 and rpath = ref []          (* rpath options *)
+and debug = ref false       (* -g option *)
 and verbose = ref false
 
 let starts_with s pref =
@@ -72,7 +78,9 @@ let parse_arguments argv =
     else if ends_with s ".ml" || ends_with s ".mli" then
      (bytecode_objs := s :: !bytecode_objs;
       native_objs := s :: !native_objs)
-    else if List.exists (ends_with s) [".o"; ".a"; ".obj"; ".lib"; ".dll"] then
+    else if List.exists (ends_with s)
+                        [".o"; ".a"; ".obj"; ".lib"; ".dll"; ".dylib"; ".so"]
+    then
       c_objs := s :: !c_objs
     else if s = "-cclib" then
       caml_libs := next_arg () :: "-cclib" :: !caml_libs
@@ -84,6 +92,8 @@ let parse_arguments argv =
       caml_opts := next_arg () :: "-I" :: !caml_opts
     else if s = "-failsafe" then
       failsafe := true
+    else if s = "-g" then
+      debug := true
     else if s = "-h" || s = "-help" || s = "--help" then
       raise (Bad_argument "")
     else if s = "-ldopt" then
@@ -96,10 +106,14 @@ let parse_arguments argv =
      (c_Lopts := s :: !c_Lopts;
       let l = chop_prefix s "-L" in
       if not (Filename.is_relative l) then rpath := l :: !rpath)
+    else if s = "-ocamlcflags" then
+      ocamlc_opts := next_arg () :: !ocamlc_opts
     else if s = "-ocamlc" then
       ocamlc := next_arg ()
     else if s = "-ocamlopt" then
       ocamlopt := next_arg ()
+    else if s = "-ocamloptflags" then
+      ocamlopt_opts := next_arg () :: !ocamlopt_opts
     else if s = "-o" then
       output := next_arg()
     else if s = "-oc" then
@@ -144,11 +158,12 @@ let parse_arguments argv =
 
 let usage = "\
 Usage: ocamlmklib [options] <.cmo|.cma|.cmx|.cmxa|.ml|.mli|.o|.a|.obj|.lib|\
-                             .dll files>\
+                             .dll|.dylib files>\
 \nOptions are:\
 \n  -cclib <lib>   C library passed to ocamlc -a or ocamlopt -a only\
 \n  -ccopt <opt>   C option passed to ocamlc -a or ocamlopt -a only\
-\n  -custom        disable dynamic loading\
+\n  -custom        Disable dynamic loading\
+\n  -g             Build with debug information\
 \n  -dllpath <dir> Add <dir> to the run-time search path for DLLs\
 \n  -F<dir>        Specify a framework directory (MacOSX)\
 \n  -framework <name>    Use framework <name> (MacOSX)\
@@ -162,7 +177,9 @@ Usage: ocamlmklib [options] <.cmo|.cma|.cmx|.cmxa|.ml|.mli|.o|.a|.obj|.lib|\
 \n  -l<lib>        Specify a dependent C library\
 \n  -L<dir>        Add <dir> to the path searched for C libraries\
 \n  -ocamlc <cmd>  Use <cmd> in place of \"ocamlc\"\
+\n  -ocamlcflags <opt>    Pass <opt> to ocamlc\
 \n  -ocamlopt <cmd> Use <cmd> in place of \"ocamlopt\"\
+\n  -ocamloptflags <opt>  Pass <opt> to ocamlopt\
 \n  -o <name>      Generated OCaml library is named <name>.cma or <name>.cmxa\
 \n  -oc <name>     Generated C library is named dll<name>.so or lib<name>.a\
 \n  -rpath <dir>   Same as -dllpath <dir>\
@@ -215,38 +232,63 @@ let prepostfix pre name post =
 let transl_path s =
   match Sys.os_type with
     | "Win32" ->
+        let s = Bytes.of_string s in
         let rec aux i =
-          if i = String.length s || s.[i] = ' ' then s
-          else (if s.[i] = '/' then s.[i] <- '\\'; aux (i + 1))
-        in aux 0
+          if i = Bytes.length s || Bytes.get s i = ' ' then s
+          else begin
+            if Bytes.get s i = '/' then Bytes.set s i '\\';
+            aux (i + 1)
+          end
+        in Bytes.to_string (aux 0)
     | _ -> s
+
+let flexdll_dirs =
+  let dirs =
+    let expand = Misc.expand_directory Config.standard_library in
+    List.map expand Config.flexdll_dirs
+  in
+  let f dir =
+    let dir =
+      if String.contains dir ' ' then
+        "\"" ^ dir ^ "\""
+      else
+        dir
+    in
+      "-L" ^ dir
+  in
+  List.map f dirs
 
 let build_libs () =
   if !c_objs <> [] then begin
     if !dynlink then begin
       let retcode = command
-          (Printf.sprintf "%s -o %s %s %s %s %s %s"
-             mkdll
-             (prepostfix "dll" !output_c ext_dll)
+          (Printf.sprintf "%s %s -o %s %s %s %s %s %s %s"
+             Config.mkdll
+             (if !debug then "-g" else "")
+             (prepostfix "dll" !output_c Config.ext_dll)
              (String.concat " " !c_objs)
              (String.concat " " !c_opts)
              (String.concat " " !ld_opts)
              (make_rpath mksharedlibrpath)
              (String.concat " " !c_libs)
+             (String.concat " " flexdll_dirs)
           )
       in
       if retcode <> 0 then if !failsafe then dynlink := false else exit 2
     end;
-    safe_remove (prepostfix "lib" !output_c ext_lib);
+    safe_remove (prepostfix "lib" !output_c Config.ext_lib);
     scommand
-      (mklib (prepostfix "lib" !output_c ext_lib)
+      (mklib (prepostfix "lib" !output_c Config.ext_lib)
              (String.concat " " !c_objs) "");
   end;
   if !bytecode_objs <> [] then
     scommand
-      (sprintf "%s -a %s -o %s.cma %s %s -dllib -l%s -cclib -l%s %s %s %s %s"
+      (sprintf "%s -a %s %s %s -o %s.cma %s %s -dllib -l%s -cclib -l%s \
+                   %s %s %s %s"
                   (transl_path !ocamlc)
+                  (if !debug then "-g" else "")
                   (if !dynlink then "" else "-custom")
+                  (String.concat " " !ocamlc_opts)
                   !output
                   (String.concat " " !caml_opts)
                   (String.concat " " !bytecode_objs)
@@ -258,8 +300,10 @@ let build_libs () =
                   (String.concat " " !caml_libs));
   if !native_objs <> [] then
     scommand
-      (sprintf "%s -a -o %s.cmxa %s %s -cclib -l%s %s %s %s %s"
+      (sprintf "%s -a %s %s -o %s.cmxa %s %s -cclib -l%s %s %s %s %s"
                   (transl_path !ocamlopt)
+                  (if !debug then "-g" else "")
+                  (String.concat " " !ocamlopt_opts)
                   !output
                   (String.concat " " !caml_opts)
                   (String.concat " " !native_objs)

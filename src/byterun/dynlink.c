@@ -1,15 +1,19 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 2000 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../LICENSE.     */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 2000 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
+
+#define CAML_INTERNALS
 
 /* Dynamic loading of C primitives. */
 
@@ -18,18 +22,19 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include "config.h"
+#include "caml/config.h"
 #ifdef HAS_UNISTD
 #include <unistd.h>
 #endif
-#include "alloc.h"
-#include "dynlink.h"
-#include "fail.h"
-#include "mlvalues.h"
-#include "memory.h"
-#include "misc.h"
-#include "osdeps.h"
-#include "prims.h"
+#include "caml/alloc.h"
+#include "caml/dynlink.h"
+#include "caml/fail.h"
+#include "caml/mlvalues.h"
+#include "caml/memory.h"
+#include "caml/misc.h"
+#include "caml/osdeps.h"
+#include "caml/prims.h"
+#include "caml/signals.h"
 
 #ifndef NATIVE_CODE
 
@@ -76,12 +81,10 @@ static char * parse_ld_conf(void)
   struct stat st;
   int ldconf, nread;
 
-  stdlib = getenv("OCAMLLIB");
-  if (stdlib == NULL) stdlib = getenv("CAMLLIB");
+  stdlib = caml_secure_getenv("OCAMLLIB");
+  if (stdlib == NULL) stdlib = caml_secure_getenv("CAMLLIB");
   if (stdlib == NULL) stdlib = OCAML_STDLIB_DIR;
-  ldconfname = caml_stat_alloc(strlen(stdlib) + 2 + sizeof(LD_CONF_NAME));
-  strcpy(ldconfname, stdlib);
-  strcat(ldconfname, "/" LD_CONF_NAME);
+  ldconfname = caml_strconcat(3, stdlib, "/", LD_CONF_NAME);
   if (stat(ldconfname, &st) == -1) {
     caml_stat_free(ldconfname);
     return NULL;
@@ -121,7 +124,9 @@ static void open_shared_lib(char * name)
   realname = caml_search_dll_in_path(&caml_shared_libs_path, name);
   caml_gc_message(0x100, "Loading shared library %s\n",
                   (uintnat) realname);
+  caml_enter_blocking_section();
   handle = caml_dlopen(realname, 1, 1);
+  caml_leave_blocking_section();
   if (handle == NULL)
     caml_fatal_error_arg2("Fatal error: cannot load shared library %s\n", name,
                           "Reason: %s\n", caml_dlerror());
@@ -145,7 +150,7 @@ void caml_build_primitive_table(char * lib_path,
      - directories specified in the executable
      - directories specified in the file <stdlib>/ld.conf */
   tofree1 = caml_decompose_path(&caml_shared_libs_path,
-                                getenv("CAML_LD_LIBRARY_PATH"));
+                                caml_secure_getenv("CAML_LD_LIBRARY_PATH"));
   if (lib_path != NULL)
     for (p = lib_path; *p != 0; p += strlen(p) + 1)
       caml_ext_table_add(&caml_shared_libs_path, p);
@@ -191,7 +196,7 @@ void caml_build_primitive_table_builtin(void)
     caml_ext_table_add(&caml_prim_name_table,
                        strdup(caml_names_of_builtin_cprim[i]));
 #endif
-}
+  }
 }
 
 #endif /* NATIVE_CODE */
@@ -204,10 +209,15 @@ CAMLprim value caml_dynlink_open_lib(value mode, value filename)
 {
   void * handle;
   value result;
+  char * p;
 
   caml_gc_message(0x100, "Opening shared library %s\n",
                   (uintnat) String_val(filename));
-  handle = caml_dlopen(String_val(filename), Int_val(mode), 1);
+  p = caml_strdup(String_val(filename));
+  caml_enter_blocking_section();
+  handle = caml_dlopen(p, Int_val(mode), 1);
+  caml_leave_blocking_section();
+  caml_stat_free(p);
   if (handle == NULL) caml_failwith(caml_dlerror());
   result = caml_alloc_small(1, Abstract_tag);
   Handle_val(result) = handle;

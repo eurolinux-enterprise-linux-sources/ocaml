@@ -1,15 +1,17 @@
-/***********************************************************************/
-/*                                                                     */
-/*                                OCaml                                */
-/*                                                                     */
-/*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         */
-/*                                                                     */
-/*  Copyright 1996 Institut National de Recherche en Informatique et   */
-/*  en Automatique.  All rights reserved.  This file is distributed    */
-/*  under the terms of the GNU Library General Public License, with    */
-/*  the special exception on linking described in file ../LICENSE.     */
-/*                                                                     */
-/***********************************************************************/
+/**************************************************************************/
+/*                                                                        */
+/*                                 OCaml                                  */
+/*                                                                        */
+/*             Xavier Leroy, projet Cristal, INRIA Rocquencourt           */
+/*                                                                        */
+/*   Copyright 1996 Institut National de Recherche en Informatique et     */
+/*     en Automatique.                                                    */
+/*                                                                        */
+/*   All rights reserved.  This file is distributed under the terms of    */
+/*   the GNU Lesser General Public License version 2.1, with the          */
+/*   special exception on linking described in the file LICENSE.          */
+/*                                                                        */
+/**************************************************************************/
 
 /* Operating system and standard library dependencies. */
 
@@ -128,6 +130,9 @@
 /* Define HAS_SYS_SELECT_H if /usr/include/sys/select.h exists
    and should be included before using select(). */
 
+#define HAS_NANOSLEEP
+/* Define HAS_NANOSLEEP if you have nanosleep(). */
+
 #define HAS_SYMLINK
 
 /* Define HAS_SYMLINK if you have symlink() and readlink() and lstat(). */
@@ -212,3 +217,7 @@
    The value of this symbol is the number of arguments of
    gethostbyaddr_r(): either 7 or 8 depending on prototype.
    (7 is the Solaris version, 8 is the Linux version). */
+
+#define HAS_NICE
+
+/* Define HAS_NICE if you have nice(). */

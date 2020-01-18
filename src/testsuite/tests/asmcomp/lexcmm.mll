@@ -1,15 +1,3 @@
-(***********************************************************************)
-(*                                                                     *)
-(*                                OCaml                                *)
-(*                                                                     *)
-(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
-(*                                                                     *)
-(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
-(*  en Automatique.  All rights reserved.  This file is distributed    *)
-(*  under the terms of the Q Public License version 1.0.               *)
-(*                                                                     *)
-(***********************************************************************)
-
 {
 open Parsecmm
 
@@ -39,6 +27,7 @@ let keyword_table =
     "case", CASE;
     "catch", CATCH;
     "checkbound", CHECKBOUND;
+    "data", DATA;
     "exit", EXIT;
     "extcall", EXTCALL;
     "float", FLOAT;
@@ -46,6 +35,7 @@ let keyword_table =
     "float64", FLOAT64;
     "floatofint", FLOATOFINT;
     "function", FUNCTION;
+    "global", GLOBAL;
     "half", HALF;
     "if", IF;
     "int", INT;
@@ -55,9 +45,11 @@ let keyword_table =
     "let", LET;
     "load", LOAD;
     "mod", MODI;
+    "mulh", MULH;
     "or", OR;
     "proj", PROJ;
-    "raise", RAISE;
+    "raise_withtrace", RAISE Cmm.Raise_withtrace;
+    "raise_notrace", RAISE Cmm.Raise_notrace;
     "seq", SEQ;
     "signed", SIGNED;
     "skip", SKIP;
@@ -66,6 +58,7 @@ let keyword_table =
     "try", TRY;
     "unit", UNIT;
     "unsigned", UNSIGNED;
+    "val", VAL;
     "while", WHILE;
     "with", WITH;
     "xor", XOR;
@@ -79,7 +72,7 @@ let keyword_table =
 
 (* To buffer string literals *)
 
-let initial_string_buffer = String.create 256
+let initial_string_buffer = Bytes.create 256
 let string_buff = ref initial_string_buffer
 let string_index = ref 0
 
@@ -88,16 +81,16 @@ let reset_string_buffer () =
   string_index := 0
 
 let store_string_char c =
-  if !string_index >= String.length (!string_buff) then begin
-    let new_buff = String.create (String.length (!string_buff) * 2) in
-      String.blit (!string_buff) 0 new_buff 0 (String.length (!string_buff));
-      string_buff := new_buff
+  if !string_index >= Bytes.length (!string_buff) then begin
+    let new_buff = Bytes.create (Bytes.length (!string_buff) * 2) in
+    Bytes.blit (!string_buff) 0 new_buff 0 (Bytes.length (!string_buff));
+    string_buff := new_buff
   end;
-  String.unsafe_set (!string_buff) (!string_index) c;
+  Bytes.unsafe_set (!string_buff) (!string_index) c;
   incr string_index
 
 let get_stored_string () =
-  let s = String.sub (!string_buff) 0 (!string_index) in
+  let s = Bytes.sub_string (!string_buff) 0 (!string_index) in
   string_buff := initial_string_buffer;
   s
 
@@ -130,10 +123,15 @@ let report_error lexbuf msg =
 
 }
 
+let newline = ('\013'* '\010')
+
 rule token = parse
-    [' ' '\010' '\013' '\009' '\012'] +
+    newline
+      { Lexing.new_line lexbuf; token lexbuf }
+  | [' ' '\009' '\012'] +
       { token lexbuf }
   | "+a" { ADDA }
+  | "+v" { ADDV }
   | "+f" { ADDF }
   | "+" { ADDI }
   | ">>s" { ASR }
@@ -161,14 +159,12 @@ rule token = parse
   | "<f" { LTF }
   | "<" { LTI }
   | "*f" { MULF }
-  | "*" { MULI }
+  | "*" { STAR }
   | "!=a" { NEA }
   | "!=f" { NEF }
   | "!=" { NEI }
   | "]" { RBRACKET }
   | ")" { RPAREN }
-  | "*" { STAR }
-  | "-a" { SUBA }
   | "-f" { SUBF }
   | "-" { SUBI }
   | '-'? (['0'-'9']+ | "0x" ['0'-'9' 'a'-'f' 'A'-'F']+
@@ -181,7 +177,7 @@ rule token = parse
       { FLOATCONST(Lexing.lexeme lexbuf) }
   | ['A'-'Z' 'a'-'z' '\223'-'\246' '\248'-'\255' ]
     (['A'-'Z' 'a'-'z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255'
-      '\'' '0'-'9' ]) *
+      '\'' '0'-'9' ]) * '/'? (['0'-'9'] *)
       { let s = Lexing.lexeme lexbuf in
         try
           Hashtbl.find keyword_table s
@@ -195,6 +191,22 @@ rule token = parse
       { comment_depth := 1;
         comment lexbuf;
         token lexbuf }
+  | '{' ['A' - 'Z' 'a'-'z' '/' ',' '.' '-' '_' ' ''0'-'9']+
+        ':' [ '0'-'9' ]+ ',' ['0'-'9' ]+ '-' ['0'-'9' ]+ '}'
+      {
+        let loc_s = Lexing.lexeme lexbuf in
+        let pos_fname, pos_lnum, start, end_ =
+          Scanf.sscanf loc_s "{%s@:%i,%i-%i}" (fun file line start end_ ->
+              (file, line, start, end_))
+        in
+        let loc_start =
+          Lexing.{ pos_fname; pos_lnum; pos_bol = 0; pos_cnum = start }
+        in
+        let loc_end =
+          Lexing.{ pos_fname; pos_lnum; pos_bol = 0; pos_cnum = end_ }
+        in
+        let location = Location.{ loc_start; loc_end; loc_ghost = false } in
+        LOCATION location }
   | _ { raise(Error(Illegal_character)) }
 
 and comment = parse
@@ -205,6 +217,8 @@ and comment = parse
         if !comment_depth > 0 then comment lexbuf }
   | eof
       { raise (Error(Unterminated_comment)) }
+  | newline
+      { Lexing.new_line lexbuf; comment lexbuf }
   | _
       { comment lexbuf }
 
@@ -224,3 +238,4 @@ and string = parse
   | _
       { store_string_char(Lexing.lexeme_char lexbuf 0);
         string lexbuf }
+

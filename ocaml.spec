@@ -23,7 +23,7 @@
 
 Name:           ocaml
 Version:        4.01.0
-Release:        22.2%{?dist}
+Release:        22.6%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -54,6 +54,8 @@ Source4:        macros.ocaml-srpm
 #
 # https://git.fedorahosted.org/cgit/fedora-ocaml.git/
 #
+# Current branch: rhel-7-4.01.0
+#
 # ALTERNATIVELY add a patch to the end of the list (leaving the
 # existing patches unchanged) adding a comment to note that it should
 # be incorporated into the git repo at a later time.
@@ -82,7 +84,17 @@ Patch0013:      0013-Add-support-for-ppc64le.patch
 Patch0014:      0014-arm-arm64-Mark-stack-as-non-executable.patch
 
 # ppc, ppc64, ppc64le non-executable stack.
-Patch0015:      0001-ppc-ppc64-ppc64le-Mark-stack-as-non-executable.patch
+Patch0015:      0015-ppc-ppc64-ppc64le-Mark-stack-as-non-executable.patch
+
+# aarch64: caml_callback2 crashes (upstream PR#6489, RHBZ#1193037).
+Patch0016:      0016-mantis-6489-fix-by-Richard-Jones.patch
+
+# ppc64le: Fix calling convention of external functions with > 8 params
+# (RHBZ#1225995).
+Patch0017:      0017-ppc64le-Fix-calling-convention-of-external-functions.patch
+
+# ppc64le: Fix behaviour of Int64.max_int ÷ -1 (RHBZ#1236615).
+Patch0018: 0018-ppc64-ppc64le-Fix-behaviour-of-Int64.max_int-1-RHBZ-.patch
 
 # Add BFD support so that ocamlobjinfo supports *.cmxs format (RHBZ#1113735).
 BuildRequires:  binutils-devel
@@ -574,6 +586,20 @@ fi
 
 
 %changelog
+* Tue Jul 07 2015 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.6
+- ppc64le: Fix behaviour of Int64.max_int ÷ -1
+  resolves: rhbz#1236615
+
+* Thu May 28 2015 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.5
+- ppc64le: Fix calling convention of external functions with > 8 params
+  resolves: rhbz#1225995
+
+* Mon Feb 16 2015 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.4
+- Fix ppc, ppc64, ppc64le stack non-executable (1214777).
+
+* Mon Feb 16 2015 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.3
+- Fix caml_callback2 crashes (upstream PR#6489, RHBZ#1197240).
+
 * Thu Sep 11 2014 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.2
 - Use -fno-strict-aliasing when building the compiler
 - ppc, ppc64, ppc64le: Mark stack as non-executable.

@@ -1,7 +1,7 @@
 From 4119a66e247a74b559d4df275f223476306440a2 Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Fri, 13 Sep 2013 21:29:58 +0100
-Subject: [PATCH 07/14] yacc: Use mkstemp instead of mktemp.
+Subject: [PATCH 07/18] yacc: Use mkstemp instead of mktemp.
 
 ---
  yacc/main.c | 2 +-
@@ -21,5 +21,5 @@ index f6cac60..3067000 100644
  #endif
  
 -- 
-2.0.4
+2.3.1
 

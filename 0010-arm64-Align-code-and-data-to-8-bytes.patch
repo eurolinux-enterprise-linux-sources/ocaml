@@ -1,7 +1,7 @@
 From 30c30cdc0b2d0af7aa05048345f272de77aba6cb Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Mon, 24 Mar 2014 05:50:28 -0500
-Subject: [PATCH 10/14] arm64: Align code and data to 8 bytes.
+Subject: [PATCH 10/18] arm64: Align code and data to 8 bytes.
 
 Insufficient alignment seems to be the cause of relocation errors when
 linking large native code OCaml programs:
@@ -37,5 +37,5 @@ index fc9649c..4e7c4b0 100644
  
  (* Beginning / end of an assembly file *)
 -- 
-2.0.4
+2.3.1
 

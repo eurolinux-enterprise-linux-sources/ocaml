@@ -1,7 +1,7 @@
 From af99e796d142efa9fc9717dcff3df55a4e82e6ca Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Tue, 1 Apr 2014 11:21:40 +0100
-Subject: [PATCH 12/14] arg: Allow flags such as --flag=arg as well as --flag
+Subject: [PATCH 12/18] arg: Allow flags such as --flag=arg as well as --flag
  arg.
 
 Allow flags to be followed directly by their argument, separated by an '='
@@ -80,5 +80,5 @@ index 869d030..b8c6f11 100644
  
     Examples ([cmd] is assumed to be the command name):
 -- 
-2.0.4
+2.3.1
 

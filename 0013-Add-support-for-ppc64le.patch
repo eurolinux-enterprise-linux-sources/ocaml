@@ -1,7 +1,7 @@
 From dbef48d3cb6424271e5d2296d16a3284db19cb25 Mon Sep 17 00:00:00 2001
 From: Michel Normand <normand@linux.vnet.ibm.com>
 Date: Tue, 18 Mar 2014 09:15:47 -0400
-Subject: [PATCH 13/18] Add support for ppc64le.
+Subject: [PATCH 13/19] Add support for ppc64le.
 
 Signed-off-by: Michel Normand <normand@linux.vnet.ibm.com>
 ---
@@ -1913,5 +1913,5 @@ index a0e1466..3bd98ad 100755
                      aspp="$bytecc -c";;
    sparc,*,solaris)  as='as'
 -- 
-2.3.1
+1.8.3.1
 

@@ -1,7 +1,7 @@
 From 959c12d1dfa5a3049fc4c7aed794afa287c46594 Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Tue, 29 May 2012 20:47:07 +0100
-Subject: [PATCH 06/18] Add support for ppc64.
+Subject: [PATCH 06/19] Add support for ppc64.
 
 Note (1): This patch was rejected upstream because they don't have
 appropriate hardware for testing.
@@ -2126,5 +2126,5 @@ index e8f8cfd..9bb9e9e 100755
                      aspp="$bytecc -c";;
    sparc,*,solaris)  as='as'
 -- 
-2.3.1
+1.8.3.1
 

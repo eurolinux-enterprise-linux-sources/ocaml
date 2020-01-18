@@ -23,7 +23,7 @@
 
 Name:           ocaml
 Version:        4.01.0
-Release:        22.6%{?dist}
+Release:        22.7%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -94,7 +94,10 @@ Patch0016:      0016-mantis-6489-fix-by-Richard-Jones.patch
 Patch0017:      0017-ppc64le-Fix-calling-convention-of-external-functions.patch
 
 # ppc64le: Fix behaviour of Int64.max_int ÷ -1 (RHBZ#1236615).
-Patch0018: 0018-ppc64-ppc64le-Fix-behaviour-of-Int64.max_int-1-RHBZ-.patch
+Patch0018:      0018-ppc64-ppc64le-Fix-behaviour-of-Int64.max_int-1-RHBZ-.patch
+
+# Fix buffer overflow and information leak CVE-2015-8869 (RHBZ#1343081).
+Patch0019:      0019-fix-PR-7003-and-a-few-other-bugs-caused-by-misuse-of.patch
 
 # Add BFD support so that ocamlobjinfo supports *.cmxs format (RHBZ#1113735).
 BuildRequires:  binutils-devel
@@ -586,6 +589,10 @@ fi
 
 
 %changelog
+* Tue Jun 07 2016 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.7
+- Fix buffer overflow and information leak CVE-2015-8869
+  resolves: rhbz#1343100
+
 * Tue Jul 07 2015 Richard W.M. Jones <rjones@redhat.com> - 4.01.0-22.6
 - ppc64le: Fix behaviour of Int64.max_int ÷ -1
   resolves: rhbz#1236615

@@ -1,7 +1,7 @@
 From 5c7b50033ad64f20c3cce71adb9b5c93dfa62678 Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Tue, 29 May 2012 20:44:18 +0100
-Subject: [PATCH 05/18] configure: Allow user defined C compiler flags.
+Subject: [PATCH 05/19] configure: Allow user defined C compiler flags.
 
 ---
  configure | 4 ++++
@@ -23,5 +23,5 @@ index cbaa053..e8f8cfd 100755
  
  cclibs="$cclibs $mathlib"
 -- 
-2.3.1
+1.8.3.1
 

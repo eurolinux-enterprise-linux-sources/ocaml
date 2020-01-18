@@ -1,7 +1,7 @@
 From 50b945d8c5e66d963815207a1cc8158f8b60e0e2 Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Thu, 28 May 2015 16:13:40 -0400
-Subject: [PATCH 17/18] ppc64le: Fix calling convention of external functions
+Subject: [PATCH 17/19] ppc64le: Fix calling convention of external functions
  with > 8 parameters (RHBZ#1225995).
 
 For external (ie. C) functions with more than 8 parameters, we must
@@ -30,5 +30,5 @@ index 9b98577..30d4cdc 100644
  
  let extcall_use_push = false
 -- 
-2.3.1
+1.8.3.1
 

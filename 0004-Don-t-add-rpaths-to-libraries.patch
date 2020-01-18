@@ -1,7 +1,7 @@
 From 67f9cad7f4d3db0efcbcdf8bb97a2db3757ff14f Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Tue, 24 Jun 2014 10:00:15 +0100
-Subject: [PATCH 04/18] Don't add rpaths to libraries.
+Subject: [PATCH 04/19] Don't add rpaths to libraries.
 
 ---
  tools/Makefile.shared | 6 +++---
@@ -25,5 +25,5 @@ index cf2f216..2d466cd 100644
           sed -n -e 's/^#ml //p' ../config/Makefile) \
          > ocamlmklibconfig.ml
 -- 
-2.3.1
+1.8.3.1
 

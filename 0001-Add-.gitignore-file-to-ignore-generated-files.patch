@@ -1,7 +1,7 @@
 From 3e74f2acd0b5a41f0faa33c770740cb74c89d257 Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Thu, 7 Jun 2012 16:00:28 +0100
-Subject: [PATCH 01/18] Add .gitignore file to ignore generated files.
+Subject: [PATCH 01/19] Add .gitignore file to ignore generated files.
 
 ---
  .gitignore | 348 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -363,5 +363,5 @@ index 0000000..20a181f
 +/yacc/ocamlyacc
 +/yacc/version.h
 -- 
-2.3.1
+1.8.3.1
 

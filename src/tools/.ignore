@@ -22,8 +22,7 @@ ocamlmklib.ml
 lexer301.ml
 scrapelabels
 addlabels
-myocamlbuild_config.ml
+ocamlmklibconfig.ml
 objinfo_helper
-objinfo_helper.exe
 read_cmt
-read_cmt.bak
+read_cmt.opt

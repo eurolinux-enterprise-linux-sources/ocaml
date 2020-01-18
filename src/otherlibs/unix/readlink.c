@@ -11,11 +11,11 @@
 /*                                                                     */
 /***********************************************************************/
 
-/* $Id: readlink.c 11156 2011-07-27 14:17:02Z doligez $ */
-
 #include <mlvalues.h>
+#include <memory.h>
 #include <alloc.h>
 #include <fail.h>
+#include <signals.h>
 
 #ifdef HAS_SYMLINK
 
@@ -32,12 +32,18 @@
 
 CAMLprim value unix_readlink(value path)
 {
+  CAMLparam1(path);
   char buffer[PATH_MAX];
   int len;
-  len = readlink(String_val(path), buffer, sizeof(buffer) - 1);
+  char * p;
+  p = caml_stat_alloc_string(path);
+  caml_enter_blocking_section();
+  len = readlink(p, buffer, sizeof(buffer) - 1);
+  caml_leave_blocking_section();
+  caml_stat_free(p);
   if (len == -1) uerror("readlink", path);
   buffer[len] = '\0';
-  return copy_string(buffer);
+  CAMLreturn(copy_string(buffer));
 }
 
 #else

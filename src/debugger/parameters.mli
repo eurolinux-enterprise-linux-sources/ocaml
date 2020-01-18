@@ -11,8 +11,6 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* $Id: parameters.mli 11156 2011-07-27 14:17:02Z doligez $ *)
-
 (* Miscellaneous parameters *)
 
 val program_name : string ref
@@ -25,3 +23,5 @@ val add_path_for : string -> string -> unit
 
 (* Used by emacs ? *)
 val emacs : bool ref
+
+val machine_readable : bool ref

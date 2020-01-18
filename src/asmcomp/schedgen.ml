@@ -10,11 +10,8 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* $Id: schedgen.ml 12876 2012-08-24 08:14:30Z xleroy $ *)
-
 (* Instruction scheduling *)
 
-open Misc
 open Reg
 open Mach
 open Linearize
@@ -339,8 +336,8 @@ method private reschedule ready_queue date cont =
             if son.emitted_ancestors = son.ancestors then
               new_queue := son :: !new_queue)
           node.sons;
-        instr_cons node.instr.desc node.instr.arg node.instr.res
-          (self#reschedule !new_queue (date + issue_cycles) cont)
+        { node.instr with next =
+            self#reschedule !new_queue (date + issue_cycles) cont }
   end
 
 (* Entry point *)

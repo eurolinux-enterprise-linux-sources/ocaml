@@ -11,8 +11,6 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* $Id: debugger_config.mli 12210 2012-03-08 19:52:03Z doligez $ *)
-
 (********************** Configuration file *****************************)
 
 exception Toplevel
@@ -36,4 +34,4 @@ val make_checkpoints : bool ref
 
 (*** Environment variables for debugee. ***)
 
-val environment : string list ref
+val environment : (string * string) list ref

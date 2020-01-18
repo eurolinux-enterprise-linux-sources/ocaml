@@ -11,8 +11,6 @@
 /*                                                                     */
 /***********************************************************************/
 
-/* $Id: io.c 12641 2012-06-25 12:02:16Z lefessan $ */
-
 /* Buffered input/output. */
 
 #include <errno.h>
@@ -23,6 +21,9 @@
 #include "config.h"
 #ifdef HAS_UNISTD
 #include <unistd.h>
+#endif
+#ifdef __CYGWIN__
+#include </usr/include/io.h>
 #endif
 #include "alloc.h"
 #include "custom.h"

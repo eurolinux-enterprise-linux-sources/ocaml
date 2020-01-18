@@ -11,8 +11,6 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* $Id: parameters.ml 11156 2011-07-27 14:17:02Z doligez $ *)
-
 (* Miscellaneous parameters *)
 
 open Primitives
@@ -37,3 +35,5 @@ let add_path_for mdl dir =
 
 (* Used by emacs ? *)
 let emacs = ref false
+
+let machine_readable = ref false

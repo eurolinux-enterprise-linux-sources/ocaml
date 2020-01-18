@@ -10,8 +10,6 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* $Id: selectgen.ml 12179 2012-02-21 17:41:02Z xleroy $ *)
-
 (* Selection of pseudo-instructions, assignment of pseudo-registers,
    sequentialization. *)
 
@@ -444,6 +442,8 @@ method emit_expr env exp =
           Some(self#emit_tuple ext_env simple_list)
       end
   | Cop(Craise dbg, [arg]) ->
+      if !Clflags.debug then
+        Proc.contains_calls := true;    (* PR#6239 *)
       begin match self#emit_expr env arg with
         None -> None
       | Some r1 ->
